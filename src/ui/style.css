@@ -1,0 +1,246 @@
+:root {
+  --bg: #0b0d17;
+  --panel: #121628;
+  --line: #262d4a;
+  --text: #e9ecff;
+  --muted: #7d86ad;
+  --accent: #ff4d6d;
+  --font: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#game {
+  position: fixed;
+  inset: 0;
+}
+
+#game canvas {
+  touch-action: none;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(ellipse at center, rgba(40, 30, 80, 0.55), rgba(11, 13, 23, 0.97) 70%);
+  z-index: 10;
+  transition: opacity 0.4s ease;
+}
+
+.overlay.leaving {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.start-card {
+  text-align: center;
+  padding: 24px;
+}
+
+.start-card h1 {
+  font-size: clamp(40px, 8vw, 72px);
+  margin: 0;
+  letter-spacing: -0.03em;
+}
+
+.tagline {
+  color: var(--muted);
+  font-size: 18px;
+  margin: 8px 0 36px;
+}
+
+#start-button {
+  font: 600 18px var(--font);
+  color: #fff;
+  background: var(--accent);
+  border: 0;
+  border-radius: 999px;
+  padding: 16px 40px;
+  cursor: pointer;
+  box-shadow: 0 0 0 0 rgba(255, 77, 109, 0.6);
+  animation: beat 0.968s ease-out infinite;
+}
+
+#start-button:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 4px;
+}
+
+@keyframes beat {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 77, 109, 0.55);
+  }
+  100% {
+    box-shadow: 0 0 0 22px rgba(255, 77, 109, 0);
+  }
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 28px;
+}
+
+#tuning-toggle {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  z-index: 5;
+  font: 500 12px var(--mono);
+  color: var(--muted);
+  background: rgba(18, 22, 40, 0.85);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+#tuning {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(340px, 100vw);
+  z-index: 20;
+  background: rgba(14, 17, 32, 0.97);
+  border-left: 1px solid var(--line);
+  overflow-y: auto;
+  padding: 16px 16px 32px;
+  font-size: 13px;
+  box-shadow: -12px 0 40px rgba(0, 0, 0, 0.4);
+}
+
+#tuning[hidden] {
+  display: none;
+}
+
+.tp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.tp-head h2 {
+  font-size: 15px;
+  margin: 0;
+}
+
+.tp-close {
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.tp-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.tp-actions button {
+  flex: 1;
+  font: 500 12px var(--font);
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+  cursor: pointer;
+}
+
+.tp-actions button:hover {
+  border-color: var(--muted);
+}
+
+.tp-group h3,
+.tp-group summary {
+  font: 600 11px var(--mono);
+  color: var(--muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin: 18px 0 8px;
+  cursor: default;
+}
+
+.tp-group summary {
+  cursor: pointer;
+}
+
+.tp-row {
+  display: grid;
+  grid-template-columns: 92px 1fr 64px;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.tp-row label {
+  color: var(--text);
+}
+
+.tp-row output {
+  font: 12px var(--mono);
+  color: var(--muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.tp-row input[type='range'] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.tp-choice {
+  display: flex;
+  gap: 4px;
+}
+
+.tp-choice button {
+  flex: 1;
+  font: 12px var(--mono);
+  color: var(--muted);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px;
+  cursor: pointer;
+}
+
+.tp-choice button[aria-pressed='true'] {
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.tp-note {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 4px 0 0;
+}
+
+.tp-toast {
+  color: #5dffa8;
+  font-size: 12px;
+  min-height: 16px;
+}
