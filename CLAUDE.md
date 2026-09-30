@@ -1,6 +1,6 @@
 # Rhythm TD
 
-A browser tower defense where the defense is the track. Each tower is an instrument layer on a house loop, enemies attack the sound, and the run ends when the music goes silent.
+A browser tower defense where the defense is the track. A drum core at the end of the path always plays the beat; each tower is a melodic layer that plays while it fights, enemies attack the sound, and the run ends when the kick drops.
 
 `docs/design.md` is the source of truth for design. Read it at the start of every session. If this file and the design doc disagree, the design doc wins; flag the conflict.
 
@@ -40,7 +40,7 @@ End every session with:
 
 - Every pitched note comes from one music module (key, chords, scale). Nothing else is allowed to pick a pitch.
 - Every event is quantized to the 16th-note grid.
-- New towers, upgrades and restored layers enter on the next bar, never mid-bar.
+- New towers, upgrades and restored layers enter on the next bar, never mid-bar. A tower that engages an enemy starts on its next pattern step and holds to the end of the bar.
 - Enemy sound effects have hard caps (filter floor, max noise and crush level). Keep a limiter on the master.
 - Tower patterns are curated presets, not free programming.
 
@@ -61,43 +61,53 @@ Unit test the music module, pattern and quantization logic, next-bar queueing, c
 
 - 124 BPM, 4/4, 16 steps per bar. A wave is 16 bars.
 - Key: A minor. Chords alternate every 2 bars: Am7 (A C E G), then Fmaj7 (F A C E).
-- Kill notes: A minor pentatonic (A C D E G), one note on the next 16th after a kill, soft and short.
-- Silent background. Only towers make sound.
+- Melodic notes come from the current chord or A minor pentatonic (A C D E G). Kill notes are dropped for now.
+- No background bed. The drum core always plays; towers add everything else.
 
-Tower patterns (16 steps, x = hit):
+Drum core (always on, 16 steps, x = hit). Core upgrades add percussion layers (shaker, rim, ride...):
+
+| Drum | Pattern | Drops out |
+| --- | --- | --- |
+| Hats | `..x...x...x...x.` | first (after any added percussion) |
+| Clap | `....x.......x...` | second |
+| Kick | `x...x...x...x...` | last = game over |
+
+Tower patterns (drafts, tune by ear with Nico):
 
 | Tower | Base | Upgraded |
 | --- | --- | --- |
-| Kick | `x...x...x...x...` | same, harder hit + extra ghost on step 15 |
-| Clap | `....x.......x...` | adds `...............x` flam on the last 16th |
-| Hats | `..x...x...x...x.` | all 16ths, accents on offbeats |
 | Bass | `..x...x...x...x.`, chord root | adds 16th pickups, root and octave |
+| Chords | `...x......x..x..`, house stab on the current chord | adds a stab |
+| Arp | `x.x.x.x.x.x.x.x.`, chord tones going up | all 16ths |
+| Lead | `x......x..x.....`, pluck hook from the pentatonic | adds a note |
 
-Sound: synthesize everything at first (Tone.js synths for kick, clap, hats, bass). If drums sound thin, propose swapping to CC0 samples and ask first. Each tower type gets its own channel with an insert chain: noise/bitcrush and a low-pass filter, both neutral by default. Enemy effects drive those inserts.
+Sound: synthesized for now (the kick is accepted; samples may come later, ask first). Each drum and each tower type gets its own channel with an insert chain: noise/bitcrush and a low-pass filter, both neutral by default. Enemy effects drive those inserts.
 
 The mix has to sound good on laptop speakers and headphones. Aim for "Nico wants to record it", not "it technically plays".
 
 ## Game rules (prototype)
 
 - One map, one fixed path, grid placement beside the path.
-- Towers attack on the steps they play. Combat roles: kick = heavy single target, short range; clap = area pulse with a short stun; hats = fast light damage, long range; bass = slows enemies on a stretch of path.
+- The drum core sits at the end of the path and always plays. Core health is split across its drum layers; leaked enemies knock them out (added percussion, then hats, clap, kick). Kick gone = game over. Core upgrades add percussion = fuller groove + more health.
+- Towers play, and attack on the steps they play, only while an enemy is in range; they hold to the end of the bar after the last target leaves. Several towers of one type = one sound, separate attacks.
+- Combat roles: lead = heavy single target, short range; chords = area pulse with a short stun; arp = fast light damage, long range; bass = slows enemies on a stretch of path.
 - Enemies: Static (noise and crush creep into the attacked tower's channel, deals damage) and Muffler (closes the low-pass on the attacked tower, shrinks its range while attacking).
-- Layers are health: a destroyed tower mutes its layer until rebuilt. A leaked enemy mutes a random active layer. Zero layers playing = game over.
-- One currency, earned per kill, spent any time.
+- A destroyed tower goes silent until rebuilt. It costs defense, not life.
+- One currency, earned per kill, spent any time on towers, tower upgrades or core upgrades.
 - After each wave: pick 1 of 3 rewards (new pattern, combo boost, or a modifier like +10% swing).
-- Combos by adjacency: Sidechain (kick next to bass: bass hits harder on the 16th after each kick), Groove (clap next to hats: hats get a crit chance on the backbeat), Full kit (kick, clap and hats all touching: all three get more range).
+- Combos by adjacency, drafts to confirm in session 4: Sidechain (bass next to chords: both hit harder on the 16th after each kick), Call and response (lead next to arp: lead crits on the backbeat), Full band (bass, chords and arp touching: more range).
 - Endless waves, each harder than the last.
-- Start screen with a click to unlock audio. HUD: bar and beat, wave, active layers, currency.
+- Start screen with a click to unlock audio. HUD: bar and beat, wave, core health (drum layers), currency.
 - Placeholder art: simple shapes that pulse on their beats. Each tower type has one color.
 
 ## Build order
 
 One milestone per session. Don't start the next until Nico has tested the current one.
 
-1. Sound first. Scaffold, deploy to GitHub Pages, start screen, transport, grid, place the 4 towers (free for now), layers enter on the next bar, pulses on beat, HUD bar:beat, basic tuning panel. Goal: does the groove sound good?
-2. Path and enemies. Static and Muffler walking the path, towers attacking on their steps, kill notes, currency and costs.
-3. The music is your health. Enemies attack towers, audible damage, tower destruction, muting, leaks, game over, endless wave scaling.
-4. Upgrades and combos.
+1. Sound first. Scaffold, deploy to GitHub Pages, start screen, transport, grid, place the 4 towers (free for now), layers enter on the next bar, pulses on beat, HUD bar:beat, basic tuning panel. Goal: does the groove sound good? (Done; led to the drum-core redesign.)
+2. Core, path and enemies. Drum core at the path's end, the 4 melodic towers (bass, chords, arp, lead), Static and Muffler walking the path, towers engaging and attacking on their steps, currency and costs.
+3. The beat is your health. Enemies attack towers, audible damage, tower destruction, leaks damaging the core, drums dropping out, game over, endless wave scaling.
+4. Upgrades (towers and core) and combos.
 5. Pick 1 of 3 rewards.
 6. Balance and polish pass from Nico's play-test notes.
 

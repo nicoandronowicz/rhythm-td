@@ -1,6 +1,6 @@
 # Rhythm TD Design Doc v0.1
 
-Last updated Sep 30, 2026. Source of truth for design decisions.
+Last updated Sep 30, 2026 (after the session 1 review). Source of truth for design decisions.
 
 ## Concept
 
@@ -11,7 +11,7 @@ Design pillars, in priority order:
 1. The defense is the track. Placing and upgrading towers is composing. A good defense and a good groove should be the same thing most of the time.
 2. It always sounds musical. Everything snaps to the beat grid and the key. Playing badly makes the track thinner or messier, never unlistenable.
 3. No two runs sound the same. Random map layouts, enemy mixes and sound variations mean each player ends up with a different track.
-4. The music is your health. A destroyed tower mutes its instrument. When the last layer drops, you lose.
+4. The beat is your health. The drum core at the end of the path always plays; leaks knock drums out of it. When the kick drops, you lose.
 
 Working title: none yet. "Rhythm TD" is a placeholder.
 
@@ -36,15 +36,15 @@ What this means for the design:
 
 ## Core loop
 
-Endless mode for the prototype: build, let the new layer drop in on the bar, survive a 16-bar wave, repeat. Campaign levels come later.
+Endless mode for the prototype: build, survive a 16-bar wave, repeat. Campaign levels come later.
 
 Loop, in order:
 
-1. Place or upgrade towers (any time; costs currency).
-2. The new layer enters on the next bar, like a queued Ableton clip.
-3. A 16-bar wave plays. Towers fire on their steps; each kill adds a note.
-4. Enemies attack the sound. Noise and filters degrade instruments; a destroyed tower mutes its layer.
-5. Any layers left? Yes: earn currency, next wave is harder, back to step 1. No: silence, the run is over.
+1. Place or upgrade towers, or upgrade the drum core (any time; costs currency). New towers are ready from the next bar.
+2. Between waves only the drum core plays, like a breakdown.
+3. A 16-bar wave walks the path. Each tower plays, and attacks, only while an enemy is in its range, so the track builds up as the wave moves down the path.
+4. Enemies attack the sound. Noise and filters degrade instruments; a destroyed tower goes silent until rebuilt. Enemies that reach the core knock drums out of the beat.
+5. Is the kick still playing? Yes: earn currency, next wave is harder, back to step 1. No: silence, the run is over.
 
 Placing and upgrading can happen at any time, but nothing enters mid-bar. That rule keeps the track in time no matter how fast or badly you play.
 
@@ -52,19 +52,39 @@ Placing and upgrading can happen at any time, but nothing enters mid-bar. That r
 
 Everything runs on one clock: 124 BPM, 4/4, a 16-step grid per bar. At that tempo one bar lasts about 1.9 seconds and a 16-bar phrase about 31 seconds, which is the length of a wave.
 
-Harmony for the prototype: A minor, alternating Am7 and Fmaj7 every 2 bars, so a wave is 4 cycles of the vamp. Kill notes come from the A minor pentatonic scale (A, C, D, E, G), which fits both chords. The background stays silent; only towers make sound.
+Harmony for the prototype: A minor, alternating Am7 and Fmaj7 every 2 bars, so a wave is 4 cycles of the vamp. Melodic material comes from the current chord or the A minor pentatonic scale (A, C, D, E, G), which fits both chords. There is no background bed: the drum core is the floor, and towers add everything else.
+
+### The drum core
+
+The drums are not towers. They are the core: the thing you defend, sitting at the end of the path. Kick, clap and hats always play, so the track always has a beat, even between waves and even in a losing run.
+
+| Drum | Pattern (16 steps) | Drops out |
+| --- | --- | --- |
+| Hats | `..x...x...x...x.` offbeat 8ths | First |
+| Clap | `....x.......x...` backbeat | Second |
+| Kick | `x...x...x...x...` four on the floor | Last. Kick gone = game over |
+
+Upgrading the core (costs currency) adds a percussion layer, such as a 16th shaker, a rim or a ride. Each one makes the groove fuller and adds one more chunk of core health. Added percussion drops out before the hats.
 
 ### Towers are instruments
 
-A tower plays its pattern and attacks on the same steps, so you hear every shot. New towers join like clips launched in Ableton's Session view: queued, then entering on the next bar. Upgrades change the pattern, for example hats going from 8ths to 16ths, which means more hits and a busier groove.
+Towers are the melodic and harmonic layers. A tower plays its pattern and attacks on the same steps, so you hear every shot, but only while it is fighting:
 
-| Tower | Plays | Attacks on | Combat role |
-| --- | --- | --- | --- |
-| Kick | Four on the floor | Every beat (steps 1, 5, 9, 13) | Heavy single-target hit, short range |
-| Clap | Backbeat | Beats 2 and 4 | Area pulse that briefly stuns |
-| Hats | Offbeat 8ths, 16ths when upgraded | Offbeats | Fast, light damage, long range |
-| Bass | Offbeat bassline on the chord root | Offbeats, 1 or 2 per beat | Slows enemies along a stretch of path |
-| Later: chord stab, arp, pad, riser | Harmony and lead layers | Their own patterns | Buffs, chain hits, shields, charging a drop |
+- An enemy enters its range: the tower starts playing from its next step.
+- The last enemy leaves or dies: the tower keeps playing to the end of the bar, then goes quiet.
+- How fast a tower engages (next step, next beat) and how long it holds are tunable.
+
+This turns the path into the arrangement. Towers near the entrance come in first each wave, towers near the core come in last, and more towers along the path means the layer plays for longer. Placing is arranging.
+
+Several towers of one type make one sound (it doesn't get louder), but each one attacks on its own. New towers are ready from the next bar, like clips launched in Ableton's Session view. Upgrades change the pattern: more hits, a busier part.
+
+| Tower | Plays (draft patterns, tuned by ear) | Combat role |
+| --- | --- | --- |
+| Bass | Offbeat root `..x...x...x...x.`; upgrade adds 16th pickups, root and octave | Slows enemies along a stretch of path |
+| Chords | House chord stab, syncopated `...x......x..x..`; upgrade adds a stab | Area pulse that briefly stuns |
+| Arp | Chord tones going up in 8ths `x.x.x.x.x.x.x.x.`; upgrade to 16ths | Fast, light damage, long range |
+| Lead | Sparse pluck hook from the pentatonic scale `x......x..x.....`; upgrade adds a note | Heavy single-target hit, short range |
+| Later: pad, riser | Sustained and build-up layers | Buffs, shields, charging a drop |
 
 ### Enemies attack the sound
 
@@ -79,13 +99,13 @@ Movement is smooth, but attacks and sound effects only land on the 16th-note gri
 | Detuner | The synth drifts out of tune, capped at 30 to 50 cents | Tower misfires some steps | Later |
 | Ducker | Everything pumps and ducks, like heavy sidechain | All towers slow down briefly | Later |
 
-Each kill also plays one note from the current chord on the next 16th, so a busy wave adds melody. This is a small version of Melodefense's scanner.
+Kill notes (a note on every kill) are dropped for now: the towers already carry the melody. They can come back if the waves feel too quiet.
 
-### The music is your health
+### The beat is your health
 
-- A destroyed tower mutes its layer until you rebuild it.
-- An enemy that reaches the exit steals a random layer.
-- Zero layers playing means game over.
+- Enemies that reach the core damage it. Core health is split across its drum layers, and damage knocks them out one by one: added percussion first, then hats, then clap, then kick.
+- The kick dropping means silence and game over.
+- A destroyed tower goes silent until you rebuild it. Losing towers hurts your defense, not your life.
 
 ### Guardrails that keep it musical
 
@@ -100,17 +120,17 @@ Each run picks a path layout from a set of templates, a key and progression from
 
 ### Combos
 
-Music ideas get game names and plain-language rules, so nobody needs theory to use them. Players who produce music will spot them faster. Three to start:
+Music ideas get game names and plain-language rules, so nobody needs theory to use them. Players who produce music will spot them faster. The first set was built on drum towers, so it is being redesigned for the melodic towers. Drafts, to confirm in session 4:
 
 | Combo | Setup | Effect |
 | --- | --- | --- |
-| Sidechain | Kick next to bass | Bass hits harder on the 16th right after each kick |
-| Groove | Clap next to hats | Hats get a critical-hit chance on the backbeat |
-| Full kit | Kick, clap and hats all touching | All three get more range |
+| Sidechain | Bass next to Chords | Both hit harder on the 16th right after each kick |
+| Call and response | Lead next to Arp | Lead gets a critical-hit chance on the backbeat |
+| Full band | Bass, Chords and Arp all touching | All three get more range |
 
 ### Economy and rewards
 
-- One currency, earned per kill, spent any time to place or upgrade. This lets you rework the track live between waves.
+- One currency, earned per kill, spent any time to place or upgrade towers, or to upgrade the drum core. This lets you rework the track live between waves.
 - After each wave: pick 1 of 3 rewards, such as a new pattern, a combo boost or a modifier like +10% swing. This is the seed of the roguelike layer.
 - A second, rarer currency waits for meta-progression in phase 2.
 
@@ -145,12 +165,12 @@ The prototype answers one question: does placing towers feel like building a tra
 ### In scope
 
 - One map with one fixed path and a placement grid
-- 124 BPM, A minor, Am7 and Fmaj7 vamp, silent background
-- Four towers: kick, clap, hats, bass, each with a base pattern and one upgraded pattern
+- 124 BPM, A minor, Am7 and Fmaj7 vamp, no background bed
+- A drum core (kick, clap, hats) at the end of the path that always plays, with core upgrades that add percussion
+- Four melodic towers: bass, chords, arp, lead, each with a base pattern and one upgraded pattern, playing only while fighting
 - Two enemies, Static and Muffler, moving smoothly and hitting on the grid
 - Endless waves of 16 bars, getting harder each wave
-- Kill notes from the A minor pentatonic scale
-- Layers as health: destroyed towers mute, leaks steal a layer, silence ends the run
+- The beat as health: leaks knock drums out of the core, losing the kick ends the run; destroyed towers go silent until rebuilt
 - One currency from kills
 - Pick 1 of 3 rewards after each wave
 - Three adjacency combos: Sidechain, Groove, Full kit
@@ -223,3 +243,12 @@ Decided on 30 Sep 2026:
 - A minor, Am7 and Fmaj7 vamp
 - Grid placement
 - Pick 1 of 3 and adjacency combos are in the prototype; the drop and run export are not
+
+Decided on 30 Sep 2026, after testing session 1:
+
+- The drums become the core at the end of the path. They always play; core health is heard as drums dropping out; kick gone = game over
+- The core can be upgraded with extra percussion (fuller groove, more health)
+- Towers are melodic layers: bass, chords, arp, lead, keeping the four combat roles (slow, area stun, fast long range, heavy single hit)
+- Towers play only while an enemy is in range, holding to the end of the bar, so the wave's path becomes the arrangement
+- Kill notes dropped for now
+- Combos to be redesigned for the melodic towers (drafts above)
