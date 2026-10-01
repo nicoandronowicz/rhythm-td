@@ -1,5 +1,39 @@
 # Progress
 
+## 2026-10-01 · Session 2: Core, path and enemies
+
+**Shipped**
+
+- Design change recorded in `design.md` and `CLAUDE.md`. The drums are now the core at the end of the path and always play; towers are melodic layers that play only while fighting; kill notes are dropped.
+- Drum core: kick, clap and hats play from the first click, in a core block at the path's end that pulses with them.
+- Four melodic towers, all synthesized, with every note picked by the music module:
+  - Bass: the session 1 sound.
+  - Chords: house stab, two detuned saws per note plus an organ layer, voiced A3 C4 E4 G4 / F3 A3 C4 E4.
+  - Arp: pluck climbing the chord over two octaves, into a dotted-8th ping-pong delay.
+  - Lead: detuned pluck playing a curated 4-bar pentatonic hook.
+- Towers play only while an enemy is in range, from their next pattern step, and hold to the end of the bar. Hits and attacks happen on the same steps. Several towers of one type make one sound but attack separately. "Idle volume", "comes in on" and "hold" are in the tuning panel.
+- Static and Muffler walk the path smoothly, drawn from the audio clock. Towers hit them only on their pattern steps:
+  - Lead: one big hit on the enemy furthest along.
+  - Arp: small hits at long range.
+  - Chords: hits everything in range with a short stun.
+  - Bass: hits and slows everything in range.
+- Waves start on their own: 4 drums-only bars, then a 16-bar wave and a 4-bar breakdown, repeating without stopping. Each wave has 2 more enemies and is 22% tougher. Mufflers join from wave 2.
+- Money: start with $120, earn per kill, towers cost $40–70, removing refunds half, moving is free.
+- HUD shows wave and countdown, money and enemies on the path. Hovering shows tower range. The track view shows 7 rows (3 drums + 4 towers) lit by what's actually playing.
+- Mix balanced by measurement for the 3 new instruments. Difficulty set by simulating builds of 2, 4, 8 and 15 towers. 82 unit tests: engagement and hold, attacks only on pattern steps, targeting, stun and slow, movement, leaks, economy, wave generation and clock, chord, arp and lead notes.
+
+**Known issues**
+
+- Enemies don't attack towers yet, and reaching the core is only counted (no damage, no game over). That's session 3.
+- Upgrades aren't in yet (session 4). The upgraded patterns are defined but unused.
+- Sounds and difficulty were set by measurement and simulation, not by ear or real play. Nico's notes come first.
+- Tuning saved in the browser from session 1 still applies. If something sounds off, press Reset in the tuning panel.
+
+**Next step**
+
+- Nico plays a few waves and sends notes plus tuning JSON: the feel of towers coming in and out, the new sounds, difficulty, money.
+- Then session 3: enemies attack towers (Static: noise and crush; Muffler: low-pass and smaller range), tower destruction, leaks knocking drums out of the core, game over, endless scaling.
+
 ## 2026-09-30 · Session 1: Sound first
 
 **Shipped**

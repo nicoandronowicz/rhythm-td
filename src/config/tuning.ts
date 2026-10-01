@@ -19,8 +19,25 @@ export const DEFAULT_TUNING = {
     clap: 2,
     hats: -7,
     bass: -5,
+    chords: -3,
+    arp: -7,
+    lead: -2,
     /** Shared short room reverb, return level. */
     room: -10,
+    /** Shared dotted-8th delay, return level. */
+    delay: -12,
+  },
+  sends: {
+    /** Per-instrument send levels into the shared room and delay, dB (-60 = off). */
+    clapRoom: -8,
+    chordsRoom: -6,
+    chordsDelay: -60,
+    arpRoom: -14,
+    arpDelay: -8,
+    leadRoom: -12,
+    leadDelay: -10,
+    /** Delay feedback, 0..0.9. */
+    delayFeedback: 0.32,
   },
   velocity: {
     normal: 0.82,
@@ -48,8 +65,6 @@ export const DEFAULT_TUNING = {
     spread: 0.009,
     /** Tail length, seconds. */
     tail: 0.2,
-    /** Send into the room reverb, dB. */
-    roomSend: -8,
   },
   hats: {
     /** High-pass cutoff, Hz. */
@@ -80,6 +95,112 @@ export const DEFAULT_TUNING = {
     midLowCut: 160,
     /** Sub sine on the root, dB. */
     sub: -3,
+  },
+  chords: {
+    /** Filter opening at the start of the stab, Hz. */
+    tone: 3200,
+    /** Where the filter settles, Hz. */
+    body: 900,
+    /** Stab length, seconds. */
+    decay: 0.24,
+    /** Detune between the two saws, cents. */
+    detune: 9,
+    /** Organ (sine) layer under the saws, dB. */
+    organ: -6,
+  },
+  arp: {
+    /** Filter opening, Hz. */
+    tone: 4200,
+    /** Note length, seconds. */
+    decay: 0.11,
+    /** Filter resonance. */
+    resonance: 4,
+  },
+  lead: {
+    /** Filter opening, Hz. */
+    tone: 3600,
+    /** Note length, seconds. */
+    decay: 0.32,
+    /** Detune between the two saws, cents. */
+    detune: 12,
+  },
+  engage: {
+    /** A tower starts playing on its next step (1) or next beat (4) after an enemy enters its range. */
+    quantize: 1,
+    /** After the last enemy leaves, keep playing to the end of this many bars (1 = end of the current bar). */
+    holdBars: 1,
+    /** Volume of towers with nobody in range, dB. -60 = silent. */
+    idle: -60,
+  },
+  economy: {
+    startMoney: 120,
+    /** Share of the cost given back when a tower is removed. */
+    refund: 0.5,
+  },
+  waves: {
+    /** Drums-only bars before the first wave. */
+    firstDelayBars: 4,
+    /** A wave lasts this many bars... */
+    lengthBars: 16,
+    /** ...then this many drums-only bars before the next one. */
+    breakdownBars: 4,
+    /** Enemies in wave 1, and how many more each wave. */
+    countBase: 6,
+    countGrowth: 2,
+    /** 16ths between spawns. */
+    spawnGap: 8,
+    /** Enemy HP compounds this much per wave (0.2 = each wave 20% tougher than the last). */
+    hpGrowth: 0.22,
+    /** Mufflers appear from this wave on, as this share of the wave. */
+    mufflerFromWave: 2,
+    mufflerShare: 0.35,
+  },
+  static: {
+    hp: 30,
+    /** Cells per beat. */
+    speed: 0.75,
+    bounty: 6,
+  },
+  muffler: {
+    hp: 55,
+    speed: 0.55,
+    bounty: 9,
+  },
+  bassTower: {
+    cost: 40,
+    damage: 2,
+    /** Radius in cells. */
+    range: 1.6,
+    /** Steps an enemy is frozen on a hit. */
+    stun: 0,
+    /** Speed taken away on a hit, 0..0.9. */
+    slow: 0.35,
+    /** Steps the slow lasts. */
+    slowSteps: 8,
+  },
+  chordsTower: {
+    cost: 60,
+    damage: 7,
+    range: 1.7,
+    stun: 1,
+    slow: 0,
+    slowSteps: 0,
+  },
+  arpTower: {
+    cost: 50,
+    damage: 3,
+    range: 3.2,
+    stun: 0,
+    slow: 0,
+    slowSteps: 0,
+  },
+  leadTower: {
+    cost: 70,
+    damage: 22,
+    range: 1.6,
+    stun: 0,
+    slow: 0,
+    slowSteps: 0,
   },
 };
 
@@ -124,7 +245,37 @@ export const TUNING_FIELDS: readonly TuningField[] = [
   { path: 'mix.clap', label: 'Clap', min: -40, max: 6, step: 0.5, unit: 'dB', group: 'Volume' },
   { path: 'mix.hats', label: 'Hats', min: -40, max: 6, step: 0.5, unit: 'dB', group: 'Volume' },
   { path: 'mix.bass', label: 'Bass', min: -40, max: 6, step: 0.5, unit: 'dB', group: 'Volume' },
+  { path: 'mix.chords', label: 'Chords', min: -40, max: 6, step: 0.5, unit: 'dB', group: 'Volume' },
+  { path: 'mix.arp', label: 'Arp', min: -40, max: 6, step: 0.5, unit: 'dB', group: 'Volume' },
+  { path: 'mix.lead', label: 'Lead', min: -40, max: 6, step: 0.5, unit: 'dB', group: 'Volume' },
   { path: 'mix.room', label: 'Room reverb', min: -40, max: 0, step: 0.5, unit: 'dB', group: 'Volume' },
+  { path: 'mix.delay', label: 'Delay', min: -40, max: 0, step: 0.5, unit: 'dB', group: 'Volume' },
+
+  { path: 'engage.quantize', label: 'Comes in on', min: 1, max: 4, step: 3, group: 'Towers play', options: [{ value: 1, label: 'next 16th' }, { value: 4, label: 'next beat' }] },
+  { path: 'engage.holdBars', label: 'Hold (bars)', min: 1, max: 4, step: 1, group: 'Towers play' },
+  { path: 'engage.idle', label: 'Idle volume', min: -60, max: 0, step: 1, unit: 'dB', group: 'Towers play' },
+
+  { path: 'waves.firstDelayBars', label: 'First wave after', min: 0, max: 16, step: 1, unit: 'bars', group: 'Waves' },
+  { path: 'waves.lengthBars', label: 'Wave length', min: 4, max: 32, step: 1, unit: 'bars', group: 'Waves' },
+  { path: 'waves.breakdownBars', label: 'Breakdown', min: 0, max: 16, step: 1, unit: 'bars', group: 'Waves' },
+  { path: 'waves.countBase', label: 'Enemies, wave 1', min: 1, max: 40, step: 1, group: 'Waves' },
+  { path: 'waves.countGrowth', label: '+ per wave', min: 0, max: 10, step: 1, group: 'Waves' },
+  { path: 'waves.spawnGap', label: 'Spawn gap', min: 1, max: 32, step: 1, unit: '16ths', group: 'Waves' },
+  { path: 'waves.hpGrowth', label: 'HP growth', min: 0, max: 1, step: 0.01, unit: '%', group: 'Waves' },
+  { path: 'waves.mufflerFromWave', label: 'Mufflers from', min: 1, max: 20, step: 1, unit: 'wave', group: 'Waves' },
+  { path: 'waves.mufflerShare', label: 'Muffler share', min: 0, max: 1, step: 0.05, unit: '%', group: 'Waves' },
+
+  { path: 'economy.startMoney', label: 'Start money', min: 0, max: 1000, step: 10, group: 'Money' },
+  { path: 'economy.refund', label: 'Refund on remove', min: 0, max: 1, step: 0.05, unit: '%', group: 'Money' },
+
+  ...towerFields('bassTower', 'Bass tower'),
+  ...towerFields('chordsTower', 'Chords tower'),
+  ...towerFields('arpTower', 'Arp tower'),
+  ...towerFields('leadTower', 'Lead tower'),
+
+  ...enemyFields('static', 'Static'),
+  ...enemyFields('muffler', 'Muffler'),
+
 
   { path: 'velocity.normal', label: 'Normal hit', min: 0, max: 1, step: 0.01, group: 'Dynamics', advanced: true },
   { path: 'velocity.accent', label: 'Accent hit', min: 0, max: 1, step: 0.01, group: 'Dynamics', advanced: true },
@@ -140,7 +291,6 @@ export const TUNING_FIELDS: readonly TuningField[] = [
   { path: 'clap.tone', label: 'Tone', min: 500, max: 3000, step: 10, unit: 'Hz', group: 'Clap', advanced: true },
   { path: 'clap.spread', label: 'Spread', min: 0.003, max: 0.025, step: 0.001, unit: 's', group: 'Clap', advanced: true },
   { path: 'clap.tail', label: 'Tail', min: 0.05, max: 0.5, step: 0.01, unit: 's', group: 'Clap', advanced: true },
-  { path: 'clap.roomSend', label: 'Room send', min: -40, max: 0, step: 0.5, unit: 'dB', group: 'Clap', advanced: true },
 
   { path: 'hats.tone', label: 'Tone', min: 3000, max: 12000, step: 50, unit: 'Hz', group: 'Hats', advanced: true },
   { path: 'hats.decay', label: 'Decay', min: 0.02, max: 0.4, step: 0.005, unit: 's', group: 'Hats', advanced: true },
@@ -156,4 +306,46 @@ export const TUNING_FIELDS: readonly TuningField[] = [
   { path: 'bass.midLowCut', label: 'Mid low cut', min: 40, max: 400, step: 5, unit: 'Hz', group: 'Bass', advanced: true },
   { path: 'bass.mid', label: 'Mid layer', min: -40, max: 6, step: 0.5, unit: 'dB', group: 'Bass', advanced: true },
   { path: 'bass.sub', label: 'Sub', min: -40, max: 6, step: 0.5, unit: 'dB', group: 'Bass', advanced: true },
+
+  { path: 'chords.tone', label: 'Tone', min: 500, max: 9000, step: 50, unit: 'Hz', group: 'Chords', advanced: true },
+  { path: 'chords.body', label: 'Body', min: 200, max: 4000, step: 25, unit: 'Hz', group: 'Chords', advanced: true },
+  { path: 'chords.decay', label: 'Decay', min: 0.05, max: 1.2, step: 0.01, unit: 's', group: 'Chords', advanced: true },
+  { path: 'chords.detune', label: 'Detune', min: 0, max: 40, step: 1, unit: 'ct', group: 'Chords', advanced: true },
+  { path: 'chords.organ', label: 'Organ layer', min: -40, max: 6, step: 0.5, unit: 'dB', group: 'Chords', advanced: true },
+
+  { path: 'arp.tone', label: 'Tone', min: 500, max: 12000, step: 50, unit: 'Hz', group: 'Arp', advanced: true },
+  { path: 'arp.decay', label: 'Decay', min: 0.03, max: 0.6, step: 0.01, unit: 's', group: 'Arp', advanced: true },
+  { path: 'arp.resonance', label: 'Resonance', min: 0.5, max: 15, step: 0.1, group: 'Arp', advanced: true },
+
+  { path: 'lead.tone', label: 'Tone', min: 500, max: 12000, step: 50, unit: 'Hz', group: 'Lead', advanced: true },
+  { path: 'lead.decay', label: 'Decay', min: 0.05, max: 1.5, step: 0.01, unit: 's', group: 'Lead', advanced: true },
+  { path: 'lead.detune', label: 'Detune', min: 0, max: 40, step: 1, unit: 'ct', group: 'Lead', advanced: true },
+
+  { path: 'sends.clapRoom', label: 'Clap → room', min: -60, max: 0, step: 0.5, unit: 'dB', group: 'Sends', advanced: true },
+  { path: 'sends.chordsRoom', label: 'Chords → room', min: -60, max: 0, step: 0.5, unit: 'dB', group: 'Sends', advanced: true },
+  { path: 'sends.chordsDelay', label: 'Chords → delay', min: -60, max: 0, step: 0.5, unit: 'dB', group: 'Sends', advanced: true },
+  { path: 'sends.arpRoom', label: 'Arp → room', min: -60, max: 0, step: 0.5, unit: 'dB', group: 'Sends', advanced: true },
+  { path: 'sends.arpDelay', label: 'Arp → delay', min: -60, max: 0, step: 0.5, unit: 'dB', group: 'Sends', advanced: true },
+  { path: 'sends.leadRoom', label: 'Lead → room', min: -60, max: 0, step: 0.5, unit: 'dB', group: 'Sends', advanced: true },
+  { path: 'sends.leadDelay', label: 'Lead → delay', min: -60, max: 0, step: 0.5, unit: 'dB', group: 'Sends', advanced: true },
+  { path: 'sends.delayFeedback', label: 'Delay feedback', min: 0, max: 0.9, step: 0.01, group: 'Sends', advanced: true },
 ];
+
+function towerFields(section: 'bassTower' | 'chordsTower' | 'arpTower' | 'leadTower', group: string): TuningField[] {
+  return [
+    { path: `${section}.cost`, label: 'Cost', min: 0, max: 500, step: 5, group, advanced: true },
+    { path: `${section}.damage`, label: 'Damage', min: 0, max: 100, step: 0.5, group, advanced: true },
+    { path: `${section}.range`, label: 'Range', min: 0.5, max: 8, step: 0.1, unit: 'cells', group, advanced: true },
+    { path: `${section}.stun`, label: 'Stun', min: 0, max: 16, step: 1, unit: '16ths', group, advanced: true },
+    { path: `${section}.slow`, label: 'Slow', min: 0, max: 0.9, step: 0.05, unit: '%', group, advanced: true },
+    { path: `${section}.slowSteps`, label: 'Slow length', min: 0, max: 32, step: 1, unit: '16ths', group, advanced: true },
+  ];
+}
+
+function enemyFields(section: 'static' | 'muffler', group: string): TuningField[] {
+  return [
+    { path: `${section}.hp`, label: 'HP', min: 1, max: 500, step: 1, group, advanced: true },
+    { path: `${section}.speed`, label: 'Speed', min: 0.1, max: 3, step: 0.05, unit: 'cells/beat', group, advanced: true },
+    { path: `${section}.bounty`, label: 'Bounty', min: 0, max: 100, step: 1, group, advanced: true },
+  ];
+}

@@ -49,7 +49,7 @@ export function mountTuningPanel(root: HTMLElement, toggleButton: HTMLElement): 
   }
 
   const note = el('p', 'tp-note');
-  note.textContent = 'Changes apply live and are saved in this browser. Swing moves the in-between notes; the base patterns only have 8ths, so try "Swing on: 8ths" to hear it today.';
+  note.textContent = 'Changes apply live and are saved in this browser. Swing on 16ths moves the in-between 16ths (chord stabs, lead); on 8ths it moves the offbeats (hats, bass, arp).';
   root.append(note);
 
   copy.onclick = async () => {

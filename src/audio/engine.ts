@@ -2,72 +2,89 @@
  * The audio engine owns the master clock.
  *
  * One repeating event on the Tone.js transport fires every 16th note, slightly ahead of time
- * (look-ahead). On that tick the game logic runs (board.onStep), the sequencer decides the hits,
- * and every sound is scheduled at the exact transport time of its step (plus swing).
+ * (look-ahead). On that tick the world advances one step (spawns, movement, who plays, attacks,
+ * kills) and every resulting sound is scheduled at the exact transport time of its step (plus swing).
  *
- * Visuals: hit pulses go through Tone.Draw (a late pulse is simply skipped). State the screen must
- * never miss (which step is audible, which layers are audible, when a tower went live) is recorded
- * with its audio time and read by the scene every frame via `audible()`.
+ * Visuals: one-off effects (pulses, shots, kills) go through Tone.Draw; a late one is simply skipped.
+ * State the screen must never miss (step, enemies, who is playing, waves) is recorded with its
+ * audio time and read by the scene every frame via `audible()`.
  */
 
 import * as Tone from 'tone';
 import { tuning } from '../config/tuningStore';
 import type { Tuning } from '../config/tuning';
-import type { Board } from '../game/board';
-import { hitsForStep, velocityFor, type Hit } from '../game/sequencer';
-import { TOWER_TYPES, type TowerType } from '../game/towers';
+import type { InstrumentId } from '../game/instruments';
+import { INSTRUMENTS } from '../game/instruments';
+import { velocityFor } from '../game/sequencer';
+import type { Attack, EnemySnapshot, StepResult, World } from '../game/world';
+import type { TowerType } from '../game/towers';
+import type { WaveStatus } from '../game/waves';
+import type { HitKind } from '../music/patterns';
 import { chordAtBar } from '../music/theory';
 import { sixteenthSeconds, stepToPosition, swingOffset, ticksToStep, type GridPosition, type SwingGrid } from '../music/timing';
+import { ArpVoice } from './instruments/arp';
 import { BassVoice } from './instruments/bass';
+import { ChordsVoice } from './instruments/chords';
 import { ClapVoice } from './instruments/clap';
 import { HatsVoice } from './instruments/hats';
 import { KickVoice } from './instruments/kick';
+import { LeadVoice } from './instruments/lead';
 import { Mixer } from './mixer';
 import type { Voice } from './voice';
 
-/** What the listener hears right now. */
+/** What the listener hears at a step. */
 export interface AudibleState {
+  /** Audio time of the step. */
+  time: number;
+  /** Seconds per 16th at the time. */
+  stepSeconds: number;
   step: number;
   pos: GridPosition;
   chord: string;
-  active: ReadonlySet<TowerType>;
+  playingLayers: ReadonlySet<TowerType>;
+  playingTowers: ReadonlySet<number>;
+  enemies: EnemySnapshot[];
+  waves: WaveStatus;
 }
 
-interface Timed<T> {
-  time: number;
-  value: T;
-}
-
-export interface HitEvent extends Hit {
-  step: number;
+export interface HitEvent {
+  instrument: InstrumentId;
+  kind: HitKind;
   velocity: number;
+  step: number;
 }
 
 export interface EngineListener {
   onHit?(e: HitEvent): void;
+  onAttack?(e: Attack): void;
+  onKill?(e: StepResult['kills'][number]): void;
+  onLeak?(e: StepResult['leaks'][number]): void;
 }
 
-export function createVoices(t: Readonly<Tuning>): Record<TowerType, Voice> {
+export function createVoices(t: Readonly<Tuning>): Record<InstrumentId, Voice> {
   return {
     kick: new KickVoice(t),
     clap: new ClapVoice(),
     hats: new HatsVoice(),
     bass: new BassVoice(t),
+    chords: new ChordsVoice(),
+    arp: new ArpVoice(),
+    lead: new LeadVoice(),
   };
 }
 
 export class AudioEngine {
   private mixer!: Mixer;
-  private voices!: Record<TowerType, Voice>;
+  private voices!: Record<InstrumentId, Voice>;
   private listeners = new Set<EngineListener>();
   private started = false;
   /** Scheduled-but-maybe-not-yet-heard steps, oldest first. */
-  private timeline: Timed<AudibleState>[] = [];
+  private timeline: AudibleState[] = [];
   private current: AudibleState | null = null;
   /** Audio time each tower went live. */
   private liveAt = new Map<number, number>();
 
-  constructor(private readonly board: Board) {}
+  constructor(private readonly world: World) {}
 
   addListener(l: EngineListener): () => void {
     this.listeners.add(l);
@@ -92,7 +109,7 @@ export class AudioEngine {
     const t = tuning.current;
     this.mixer = new Mixer(t);
     this.voices = createVoices(t);
-    for (const type of TOWER_TYPES) this.voices[type].output.connect(this.mixer.layers[type].input);
+    for (const id of INSTRUMENTS) this.voices[id].output.connect(this.mixer.layers[id].input);
     await this.mixer.ready();
 
     tuning.subscribe((path) => this.onTuningChange(path));
@@ -112,7 +129,7 @@ export class AudioEngine {
   audible(): AudibleState | null {
     const now = this.now();
     while (this.timeline.length && this.timeline[0]!.time <= now) {
-      this.current = this.timeline.shift()!.value;
+      this.current = this.timeline.shift()!;
     }
     return this.current;
   }
@@ -134,7 +151,7 @@ export class AudioEngine {
     const t = tuning.current;
     if (path === 'transport.bpm') Tone.getTransport().bpm.rampTo(t.transport.bpm, 0.05);
     this.mixer.applyTuning(t);
-    for (const type of TOWER_TYPES) this.voices[type].applyTuning(t);
+    for (const id of INSTRUMENTS) this.voices[id].applyTuning(t);
   }
 
   /** The 16th-note tick. `time` is the exact audio time of this step. */
@@ -144,28 +161,52 @@ export class AudioEngine {
     const step = ticksToStep(transport.getTicksAtTime(time), transport.PPQ);
     const pos = stepToPosition(step);
     const bpm = transport.bpm.value;
+    const sixteenth = sixteenthSeconds(bpm);
 
-    // Game logic first: layers change only on bar starts.
-    const barChange = this.board.onStep(step);
-    const active = new Set(this.board.activeLayers);
-    if (barChange) for (const tw of barChange.entered) this.liveAt.set(tw.id, time);
+    const r = this.world.onStep(step, t);
+    for (const tw of r.entered) this.liveAt.set(tw.id, time);
 
     const swing = swingOffset(step, t.transport.swing, t.transport.swingGrid as SwingGrid, bpm);
-    const hits = hitsForStep(step, active);
-    const sixteenth = sixteenthSeconds(bpm);
     const hitEvents: HitEvent[] = [];
-    for (const hit of hits) {
-      const velocity = velocityFor(hit.kind, t.velocity);
-      this.voices[hit.type].trigger(time + swing, { kind: hit.kind, velocity, bar: pos.bar, step, sixteenth }, t);
-      hitEvents.push({ ...hit, step, velocity });
+    for (const hit of r.hits) {
+      const velocity = velocityFor(hit.kind, t.velocity) * hit.gain;
+      this.voices[hit.instrument].trigger(
+        time + swing,
+        { kind: hit.kind, velocity, bar: pos.bar, step, sixteenth, hitIndex: hit.hitIndex },
+        t,
+      );
+      hitEvents.push({ instrument: hit.instrument, kind: hit.kind, velocity, step });
     }
 
-    this.timeline.push({ time, value: { step, pos, chord: chordAtBar(pos.bar).name, active } });
+    this.timeline.push({
+      time,
+      stepSeconds: sixteenth,
+      step,
+      pos,
+      chord: chordAtBar(pos.bar).name,
+      playingLayers: r.playingLayers,
+      playingTowers: r.playingTowers,
+      enemies: r.enemies,
+      waves: r.waves,
+    });
     if (this.timeline.length > 64) this.timeline.shift();
-    if (hitEvents.length) {
-      Tone.getDraw().schedule(() => {
-        for (const e of hitEvents) this.listeners.forEach((l) => l.onHit?.(e));
+
+    const draw = Tone.getDraw();
+    if (hitEvents.length || r.attacks.length) {
+      draw.schedule(() => {
+        for (const l of this.listeners) {
+          for (const e of hitEvents) l.onHit?.(e);
+          for (const a of r.attacks) l.onAttack?.(a);
+        }
       }, time + swing);
+    }
+    if (r.kills.length || r.leaks.length) {
+      draw.schedule(() => {
+        for (const l of this.listeners) {
+          for (const k of r.kills) l.onKill?.(k);
+          for (const k of r.leaks) l.onLeak?.(k);
+        }
+      }, time);
     }
   }
 }

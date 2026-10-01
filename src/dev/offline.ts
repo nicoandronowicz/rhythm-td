@@ -8,28 +8,46 @@ import * as Tone from 'tone';
 import { DEFAULT_TUNING, type Tuning } from '../config/tuning';
 import { createVoices } from '../audio/engine';
 import { Mixer } from '../audio/mixer';
-import { hitsForStep, velocityFor } from '../game/sequencer';
-import type { TowerType } from '../game/towers';
+import { velocityFor } from '../game/sequencer';
+import { DRUM_DEFS, type DrumType } from '../game/core';
+import { INSTRUMENTS, type InstrumentId } from '../game/instruments';
+import { TOWER_DEFS, type TowerType } from '../game/towers';
+import { hitIndexAt } from '../game/world';
+import { stepAt, type Pattern } from '../music/patterns';
 import { sixteenthSeconds, stepToPosition, swingOffset, type SwingGrid } from '../music/timing';
 
-export async function render(layers: TowerType[], bars = 4, t: Tuning = DEFAULT_TUNING): Promise<AudioBuffer> {
+function patternOf(id: InstrumentId): Pattern {
+  return id in DRUM_DEFS ? DRUM_DEFS[id as DrumType].pattern : TOWER_DEFS[id as TowerType].patterns.base;
+}
+
+/** Render instruments playing their base patterns continuously. */
+export async function render(layers: InstrumentId[], bars = 4, t: Tuning = DEFAULT_TUNING): Promise<AudioBuffer> {
   const bpm = t.transport.bpm;
   const seconds = (bars * 16 * sixteenthSeconds(bpm)) + 1;
   const buf = await Tone.Offline(async ({ transport }) => {
     const mixer = new Mixer(t);
     const voices = createVoices(t);
-    for (const type of Object.keys(voices) as TowerType[]) voices[type].output.connect(mixer.layers[type].input);
+    for (const id of INSTRUMENTS) voices[id].output.connect(mixer.layers[id].input);
     await mixer.ready();
     transport.bpm.value = bpm;
-    const active = new Set(layers);
     let step = 0;
     transport.scheduleRepeat((time) => {
       const pos = stepToPosition(step);
       const swing = swingOffset(step, t.transport.swing, t.transport.swingGrid as SwingGrid, bpm);
-      for (const hit of hitsForStep(step, active)) {
-        voices[hit.type].trigger(
+      for (const id of layers) {
+        const pattern = patternOf(id);
+        const kind = stepAt(pattern, pos.stepInBar);
+        if (!kind) continue;
+        voices[id].trigger(
           time + swing,
-          { kind: hit.kind, velocity: velocityFor(hit.kind, t.velocity), bar: pos.bar, step, sixteenth: sixteenthSeconds(bpm) },
+          {
+            kind,
+            velocity: velocityFor(kind, t.velocity),
+            bar: pos.bar,
+            step,
+            sixteenth: sixteenthSeconds(bpm),
+            hitIndex: hitIndexAt(pattern, pos.stepInBar),
+          },
           t,
         );
       }
@@ -196,15 +214,16 @@ export function measure(buf: AudioBuffer): Analysis {
   };
 }
 
-export async function analyze(layers: TowerType[], bars = 4, t: Tuning = DEFAULT_TUNING): Promise<Analysis> {
+export async function analyze(layers: InstrumentId[], bars = 4, t: Tuning = DEFAULT_TUNING): Promise<Analysis> {
   return measure(await render(layers, bars, t));
 }
 
 /** Every layer solo, then the full mix. Loudness is shown relative to the kick. */
 export async function report(t: Tuning = DEFAULT_TUNING): Promise<string> {
   const out: Record<string, Analysis> = {};
-  for (const l of ['kick', 'clap', 'hats', 'bass'] as TowerType[]) out[l] = await analyze([l], 4, t);
-  out.full = await analyze(['kick', 'clap', 'hats', 'bass'], 4, t);
+  for (const l of INSTRUMENTS) out[l] = await analyze([l], 4, t);
+  out.drums = await analyze(['kick', 'clap', 'hats'], 4, t);
+  out.full = await analyze([...INSTRUMENTS], 4, t);
   const ref = out.kick!;
   const lines = Object.entries(out).map(
     ([name, a]) =>

@@ -10,8 +10,10 @@ export interface Cell {
 export interface GridLayout {
   cols: number;
   rows: number;
-  /** Path corners in cell coordinates. First and last may sit just off the board (entry and exit). */
+  /** Path corners in cell coordinates. The first may sit just off the board (entry); the last is where enemies reach the core. */
   waypoints: readonly Cell[];
+  /** Cells covered by the drum core. Not buildable. */
+  core: { col: number; row: number; cols: number; rows: number };
 }
 
 export const PROTOTYPE_MAP: GridLayout = {
@@ -25,9 +27,15 @@ export const PROTOTYPE_MAP: GridLayout = {
     { col: 7, row: 2 },
     { col: 11, row: 2 },
     { col: 11, row: 7 },
-    { col: 15, row: 7 },
+    { col: 13, row: 7 },
   ],
+  core: { col: 13, row: 6, cols: 2, rows: 3 },
 };
+
+export function isCoreCell(layout: GridLayout, c: Cell): boolean {
+  const k = layout.core;
+  return c.col >= k.col && c.col < k.col + k.cols && c.row >= k.row && c.row < k.row + k.rows;
+}
 
 export function cellKey(c: Cell): string {
   return `${c.col},${c.row}`;

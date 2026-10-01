@@ -30,6 +30,15 @@ export interface MusicSpec {
   bassRange: readonly [number, number];
   /** Pitch the kick is tuned to. */
   kickNote: number;
+  /** Lowest note a chord stab's root may sit on. */
+  voicingFloor: number;
+  /** Lowest note the arp starts from. */
+  arpFloor: number;
+  /**
+   * Lead hook: one row per bar of a 4-bar phrase, one MIDI note per hit in the bar.
+   * Curated from the melody scale; extra entries are used by upgraded patterns.
+   */
+  leadMotif: readonly (readonly number[])[];
 }
 
 export const AM7: Chord = { name: 'Am7', tones: ['A', 'C', 'E', 'G'] };
@@ -48,6 +57,16 @@ export const PROTOTYPE_SPEC: MusicSpec = {
   bassRange: [28, 39],
   // A1, 55 Hz.
   kickNote: 33,
+  // F3: Am7 voices as A3 C4 E4 G4, Fmaj7 as F3 A3 C4 E4 (common tones stay put).
+  voicingFloor: 53,
+  // E4: the arp climbs from A4 on Am7 and F4 on Fmaj7.
+  arpFloor: 64,
+  leadMotif: [
+    [76, 74, 72, 69], // Am7: E5 D5 C5 (A4)
+    [69, 72, 74, 76], // Am7: A4 C5 D5 (E5)
+    [76, 79, 76, 72], // Fmaj7: E5 G5 E5 (C5)
+    [74, 72, 69, 67], // Fmaj7: D5 C5 A4 (G4)
+  ],
 };
 
 export function pitchClassIndex(pc: PitchClass): number {
@@ -111,7 +130,41 @@ export function kickNote(spec: MusicSpec = PROTOTYPE_SPEC): number {
   return spec.kickNote;
 }
 
-/** Melody scale notes inside [min, max], ascending. Used for kill notes. */
+/** Chord tones stacked upward from the root, root placed at or above `floor`. */
+function stackChord(bar: number, floor: number, spec: MusicSpec): number[] {
+  const tones = chordAtBar(bar, spec).tones;
+  const out: number[] = [];
+  let prev = placeInRange(tones[0]!, floor);
+  out.push(prev);
+  for (const pc of tones.slice(1)) {
+    const n = placeInRange(pc, prev + 1);
+    out.push(n);
+    prev = n;
+  }
+  return out;
+}
+
+/** Notes of a chord stab for a bar, ascending. */
+export function chordVoicing(bar: number, spec: MusicSpec = PROTOTYPE_SPEC): number[] {
+  return stackChord(bar, spec.voicingFloor, spec);
+}
+
+/** Arp note for the n-th hit of a bar: chord tones going up over two octaves, then round again. */
+export function arpNote(bar: number, hitIndex: number, spec: MusicSpec = PROTOTYPE_SPEC): number {
+  const tones = stackChord(bar, spec.arpFloor, spec);
+  const cycle = tones.length * 2;
+  const i = ((hitIndex % cycle) + cycle) % cycle;
+  return tones[i % tones.length]! + 12 * Math.floor(i / tones.length);
+}
+
+/** Lead note for the n-th hit of a bar, from the curated hook. */
+export function leadNote(bar: number, hitIndex: number, spec: MusicSpec = PROTOTYPE_SPEC): number {
+  const rows = spec.leadMotif.length;
+  const row = spec.leadMotif[((bar % rows) + rows) % rows]!;
+  return row[Math.min(Math.max(hitIndex, 0), row.length - 1)]!;
+}
+
+/** Melody scale notes inside [min, max], ascending. */
 export function melodyNotesInRange(min: number, max: number, spec: MusicSpec = PROTOTYPE_SPEC): number[] {
   const allowed = new Set(spec.melodyScale.map(pitchClassIndex));
   const out: number[] = [];

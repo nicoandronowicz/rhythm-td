@@ -3,13 +3,14 @@ import { AudioEngine } from './audio/engine';
 import { tuning } from './config/tuningStore';
 import { Board } from './game/board';
 import { PROTOTYPE_MAP } from './game/grid';
+import { World } from './game/world';
 import { GAME_SIZE, GameScene } from './scenes/GameScene';
 import { COLORS } from './scenes/layout';
 import { mountTuningPanel } from './ui/tuningPanel';
 import './ui/style.css';
 
-const board = new Board(PROTOTYPE_MAP);
-const engine = new AudioEngine(board);
+const world = new World(new Board(PROTOTYPE_MAP), tuning.current);
+const engine = new AudioEngine(world);
 
 new Phaser.Game({
   type: Phaser.AUTO,
@@ -19,7 +20,7 @@ new Phaser.Game({
   backgroundColor: COLORS.background,
   antialias: true,
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-  scene: [new GameScene(board, engine)],
+  scene: [new GameScene(world, engine)],
 });
 
 mountTuningPanel(document.getElementById('tuning')!, document.getElementById('tuning-toggle')!);
@@ -41,4 +42,4 @@ startButton.addEventListener('click', async () => {
 });
 
 // Handy for debugging from the console.
-Object.assign(window, { rhythmTd: { board, engine, tuning } });
+Object.assign(window, { rhythmTd: { world, engine, tuning } });

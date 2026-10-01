@@ -22,6 +22,8 @@ export interface HitContext {
   step: number;
   /** Seconds per 16th at the current tempo. */
   sixteenth: number;
+  /** Which hit of the bar this is (0 = first). Melodic voices pick their note from it. */
+  hitIndex: number;
 }
 
 export abstract class Voice {

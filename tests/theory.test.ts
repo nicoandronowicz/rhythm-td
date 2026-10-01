@@ -77,3 +77,40 @@ describe('bass layers', () => {
     expect(bassLayerNotes(0, true).sub).toBe(am.sub + 12);
   });
 });
+
+describe('melodic towers', () => {
+  it('chord stabs use only chord tones, ascending, in a tight voicing', async () => {
+    const { chordVoicing } = await import('../src/music/theory');
+    expect(chordVoicing(0).map(midiToName)).toEqual(['A3', 'C4', 'E4', 'G4']);
+    expect(chordVoicing(2).map(midiToName)).toEqual(['F3', 'A3', 'C4', 'E4']);
+    for (let bar = 0; bar < 8; bar++) {
+      const v = chordVoicing(bar);
+      const pcs = chordAtBar(bar).tones;
+      for (let i = 0; i < v.length; i++) {
+        expect(pcs).toContain(midiToName(v[i]!).replace(/-?\d+$/, ''));
+        if (i > 0) expect(v[i]!).toBeGreaterThan(v[i - 1]!);
+      }
+      expect(v[v.length - 1]! - v[0]!).toBeLessThan(13);
+    }
+  });
+
+  it('arp climbs the chord tones over two octaves and wraps', async () => {
+    const { arpNote } = await import('../src/music/theory');
+    const am = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => midiToName(arpNote(0, i)));
+    expect(am).toEqual(['A4', 'C5', 'E5', 'G5', 'A5', 'C6', 'E6', 'G6']);
+    expect(arpNote(0, 8)).toBe(arpNote(0, 0));
+    expect(midiToName(arpNote(2, 0))).toBe('F4');
+    for (let i = 0; i < 16; i++) {
+      const pc = midiToName(arpNote(2, i)).replace(/-?\d+$/, '');
+      expect(chordAtBar(2).tones).toContain(pc);
+    }
+  });
+
+  it('lead hook only uses the pentatonic scale, on every bar and hit', async () => {
+    const { leadNote } = await import('../src/music/theory');
+    for (let bar = 0; bar < 8; bar++) {
+      for (let hit = 0; hit < 6; hit++) expect(isInMelodyScale(leadNote(bar, hit))).toBe(true);
+    }
+    expect(midiToName(leadNote(0, 0))).toBe('E5');
+  });
+});
