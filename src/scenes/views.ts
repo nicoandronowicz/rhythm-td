@@ -24,8 +24,11 @@ export function toScreen(p: Point): Point {
 
 export class CoreView {
   private pads = new Map<DrumType, Phaser.GameObjects.Arc>();
+  private pips = new Map<DrumType, Phaser.GameObjects.Rectangle[]>();
   private frame: Phaser.GameObjects.Graphics;
+  private restShade: Phaser.GameObjects.Rectangle;
   readonly center: Point;
+  private dropped = new Set<DrumType>();
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -48,9 +51,10 @@ export class CoreView {
     drums.forEach((d, i) => {
       const py = y + 48 + i * 42;
       const r = d === 'kick' ? 15 : 11;
-      this.pads.set(d, scene.add.circle(x + w / 2, py, r, DRUM_DEFS[d].color, 0.35).setDepth(5));
+      this.pads.set(d, scene.add.circle(x + w / 2 - 14, py, r, DRUM_DEFS[d].color, 0.35).setDepth(5));
+      this.pips.set(d, []);
       scene.add
-        .text(x + w / 2, py + r + 3, DRUM_DEFS[d].name.toLowerCase(), {
+        .text(x + w / 2 - 14, py + r + 3, DRUM_DEFS[d].name.toLowerCase(), {
           fontFamily: FONT,
           fontSize: '10px',
           color: COLORS.dim,
@@ -59,11 +63,35 @@ export class CoreView {
         .setOrigin(0.5, 0)
         .setDepth(5);
     });
+    this.restShade = scene.add.rectangle(x, y, w, h, COLORS.background, 0).setOrigin(0, 0).setDepth(6);
+  }
+
+  /** Health pips beside each drum (one per leak it can still take). */
+  setHealth(drums: Record<DrumType, number>, perDrum: number): void {
+    for (const [d, pad] of this.pads) {
+      const pips = this.pips.get(d)!;
+      while (pips.length < perDrum) {
+        const i = pips.length;
+        pips.push(this.scene.add.rectangle(pad.x + 28, pad.y - 10 + i * 8, 10, 5, 0x5dffa8, 1).setDepth(5));
+      }
+      pips.forEach((p, i) => p.setVisible(i < perDrum).setFillStyle(i < drums[d] ? 0x5dffa8 : 0x3b4370, 1));
+      if (drums[d] <= 0 && !this.dropped.has(d)) {
+        this.dropped.add(d);
+        pad.setFillStyle(0x3b4370, 1);
+        this.scene.tweens.killTweensOf(pad);
+        pad.setAlpha(1).setScale(1);
+      }
+    }
+  }
+
+  /** Resting between waves: dimmed, like a track with the filter down. */
+  setResting(resting: boolean): void {
+    this.scene.tweens.add({ targets: this.restShade, fillAlpha: resting ? 0.45 : 0, duration: 400 });
   }
 
   pulse(drum: DrumType, velocity: number): void {
     const pad = this.pads.get(drum);
-    if (!pad) return;
+    if (!pad || this.dropped.has(drum)) return;
     this.scene.tweens.add({ targets: pad, scale: { from: 1 + 0.45 * velocity, to: 1 }, alpha: { from: 1, to: 0.35 }, duration: 180 });
   }
 
@@ -83,6 +111,12 @@ export class TowerView {
   private ring: Phaser.GameObjects.Arc;
   private body: Phaser.GameObjects.Graphics;
   private outline: Phaser.GameObjects.Graphics;
+  private wreckShape: Phaser.GameObjects.Graphics;
+  private muffleTint: Phaser.GameObjects.Arc;
+  private hpBack: Phaser.GameObjects.Rectangle;
+  private hpBar: Phaser.GameObjects.Rectangle;
+  private wrecked = false;
+  private staticLevel = 0;
   /** Went live: its entry bar has been heard. */
   live = false;
   /** Playing right now (an enemy in range, or holding to the bar end). */
@@ -101,7 +135,16 @@ export class TowerView {
     drawShape(this.body, def.shape, TOWER_SIZE, def.color);
     this.outline = scene.add.graphics();
     drawShape(this.outline, def.shape, TOWER_SIZE + 8, def.color, 0.9, true);
-    this.container = scene.add.container(p.x, p.y, [this.glow, this.ring, this.body, this.outline]).setDepth(10);
+    this.wreckShape = scene.add.graphics().setVisible(false);
+    drawShape(this.wreckShape, def.shape, TOWER_SIZE, 0x3b4370, 1);
+    this.wreckShape.lineStyle(2, COLORS.background, 1);
+    this.wreckShape.lineBetween(-12, -10, 2, 2).lineBetween(2, 2, -4, 14).lineBetween(2, 2, 13, -4);
+    this.muffleTint = scene.add.circle(0, 0, TOWER_SIZE / 2 + 4, 0x6f7bd6, 1).setAlpha(0);
+    this.hpBack = scene.add.rectangle(-16, -26, 32, 4, 0x000000, 0.6).setOrigin(0, 0.5).setVisible(false);
+    this.hpBar = scene.add.rectangle(-16, -26, 32, 4, 0x5dffa8, 1).setOrigin(0, 0.5).setVisible(false);
+    this.container = scene.add
+      .container(p.x, p.y, [this.glow, this.ring, this.body, this.outline, this.wreckShape, this.muffleTint, this.hpBack, this.hpBar])
+      .setDepth(10);
     this.applyLook();
     this.container.setScale(0.6);
     scene.tweens.add({ targets: this.container, scale: 1, duration: 180, ease: 'Back.easeOut' });
@@ -119,6 +162,9 @@ export class TowerView {
 
   goLive(): void {
     this.live = true;
+    this.wrecked = false;
+    this.body.setVisible(true);
+    this.wreckShape.setVisible(false);
     this.scene.tweens.killTweensOf([this.outline, this.body, this.glow]);
     this.applyLook();
     this.scene.tweens.add({ targets: this.body, scale: { from: 1.5, to: 1 }, duration: 300, ease: 'Back.easeOut' });
@@ -132,12 +178,49 @@ export class TowerView {
 
   /** Queued towers blink on the beat until their bar. */
   blink(): void {
-    if (this.live) return;
+    if (this.live || this.wrecked) return;
     this.scene.tweens.add({ targets: this.outline, alpha: { from: 1, to: 0.3 }, duration: 300 });
   }
 
+  get isWreck(): boolean {
+    return this.wrecked;
+  }
+
+  /** Health, damage looks and wreck state, from the tower's current numbers. */
+  sync(): void {
+    const t = this.tower;
+    const wreck = t.state === 'wreck';
+    if (wreck !== this.wrecked) {
+      this.wrecked = wreck;
+      this.body.setVisible(!wreck);
+      this.wreckShape.setVisible(wreck);
+      if (wreck) {
+        this.live = false;
+        this.playing = false;
+        this.scene.tweens.add({ targets: this.container, scale: { from: 1.3, to: 1 }, angle: { from: -8, to: 0 }, duration: 260 });
+        this.scene.cameras.main.shake(90, 0.0015);
+      }
+      this.applyLook();
+    }
+    const f = t.maxHp > 0 ? t.hp / t.maxHp : 1;
+    const hurt = !wreck && f < 0.999;
+    this.hpBack.setVisible(hurt);
+    this.hpBar.setVisible(hurt);
+    this.hpBar.width = 32 * Math.max(0, f);
+    this.hpBar.setFillStyle(f > 0.5 ? 0x5dffa8 : f > 0.25 ? 0xffc94d : 0xff4d6d);
+    this.muffleTint.setAlpha(wreck ? 0 : t.muffleLevel * 0.45);
+    this.staticLevel = wreck ? 0 : t.staticLevel;
+  }
+
+  /** Under attack: a quick shake, harder with more Static on it. */
+  struck(byStatic: boolean): void {
+    const dx = byStatic ? 3 + this.staticLevel * 4 : 1.5;
+    const x = this.container.x;
+    this.scene.tweens.add({ targets: this.container, x: { from: x - dx, to: x }, duration: 120, ease: 'Bounce.easeOut' });
+  }
+
   pulse(velocity: number): void {
-    if (!this.live) return;
+    if (!this.live || this.wrecked) return;
     this.scene.tweens.add({ targets: this.body, scale: { from: 1 + 0.35 * velocity, to: 1 }, duration: 170, ease: 'Cubic.easeOut' });
     this.scene.tweens.add({ targets: this.glow, alpha: { from: 0.4 * velocity, to: this.restGlow() }, duration: 260 });
     this.scene.tweens.add({ targets: this.ring, alpha: { from: 0.8 * velocity, to: 0 }, scale: { from: 1, to: 2.2 }, duration: 300 });
@@ -161,7 +244,7 @@ export class TowerView {
 
   private applyLook(): void {
     this.body.setAlpha(!this.live ? 0.28 : this.playing ? 1 : 0.55);
-    this.outline.setAlpha(this.live ? 0 : 0.8);
+    this.outline.setAlpha(this.live || this.wrecked ? 0 : 0.8);
     this.glow.setAlpha(this.restGlow());
   }
 }
@@ -266,6 +349,32 @@ export class Effects {
         .setOrigin(0.5)
         .setDepth(17);
       this.scene.tweens.add({ targets: txt, y: at.y - 34, alpha: 0, duration: 700, onComplete: () => txt.destroy() });
+    }
+  }
+
+  /** An enemy hitting a tower: a jagged white zap for Static, a soft blue pulse for Muffler. */
+  enemyAttack(type: 'static' | 'muffler', from: Point, to: Point): void {
+    const g = this.scene.add.graphics().setDepth(13);
+    if (type === 'static') {
+      g.lineStyle(2, 0xe8ecff, 1);
+      g.beginPath();
+      g.moveTo(from.x, from.y);
+      const n = 5;
+      for (let i = 1; i < n; i++) {
+        const f = i / n;
+        g.lineTo(from.x + (to.x - from.x) * f + (Math.random() - 0.5) * 10, from.y + (to.y - from.y) * f + (Math.random() - 0.5) * 10);
+      }
+      g.lineTo(to.x, to.y);
+      g.strokePath();
+      this.scene.tweens.add({ targets: g, alpha: 0, duration: 140, onComplete: () => g.destroy() });
+    } else {
+      g.lineStyle(3, 0x6f7bd6, 0.8);
+      g.lineBetween(from.x, from.y, to.x, to.y);
+      const wave = this.scene.add.circle(to.x, to.y, 12).setDepth(13);
+      wave.isFilled = false;
+      wave.setStrokeStyle(2, 0x6f7bd6, 0.9);
+      this.scene.tweens.add({ targets: [g, wave], alpha: 0, duration: 300, onComplete: () => (g.destroy(), wave.destroy()) });
+      this.scene.tweens.add({ targets: wave, scale: 2, duration: 300 });
     }
   }
 

@@ -16,7 +16,9 @@ import type { Tuning } from '../config/tuning';
 import type { InstrumentId } from '../game/instruments';
 import { INSTRUMENTS } from '../game/instruments';
 import { velocityFor } from '../game/sequencer';
-import type { Attack, EnemySnapshot, StepResult, World } from '../game/world';
+import type { Attack, CoreMode, EnemyAttack, EnemySnapshot, LayerSound, StepResult, World } from '../game/world';
+import { TOWER_TYPES } from '../game/towers';
+import type { DrumType } from '../game/core';
 import type { TowerType } from '../game/towers';
 import type { WaveStatus } from '../game/waves';
 import type { HitKind } from '../music/patterns';
@@ -30,6 +32,8 @@ import { HatsVoice } from './instruments/hats';
 import { KickVoice } from './instruments/kick';
 import { LeadVoice } from './instruments/lead';
 import { Mixer } from './mixer';
+import { StaticNoiseVoice } from './instruments/staticNoise';
+import { dbToGain } from './curves';
 import type { Voice } from './voice';
 
 /** What the listener hears at a step. */
@@ -41,10 +45,13 @@ export interface AudibleState {
   step: number;
   pos: GridPosition;
   chord: string;
-  playingLayers: ReadonlySet<TowerType>;
+  layers: Record<TowerType, LayerSound>;
   playingTowers: ReadonlySet<number>;
   enemies: EnemySnapshot[];
   waves: WaveStatus;
+  core: CoreMode;
+  drums: Record<DrumType, number>;
+  gameOver: boolean;
 }
 
 export interface HitEvent {
@@ -59,6 +66,13 @@ export interface EngineListener {
   onAttack?(e: Attack): void;
   onKill?(e: StepResult['kills'][number]): void;
   onLeak?(e: StepResult['leaks'][number]): void;
+  onEnemyAttack?(e: EnemyAttack): void;
+}
+
+/** Where a tower layer's presence is heading. */
+interface PresenceTarget {
+  cutoff: number;
+  db: number;
 }
 
 export function createVoices(t: Readonly<Tuning>): Record<InstrumentId, Voice> {
@@ -83,6 +97,10 @@ export class AudioEngine {
   private current: AudibleState | null = null;
   /** Audio time each tower went live. */
   private liveAt = new Map<number, number>();
+  private noise!: Record<TowerType, StaticNoiseVoice>;
+  private presence = new Map<TowerType, PresenceTarget>();
+  private coreMode: CoreMode | null = null;
+  private ended = false;
 
   constructor(private readonly world: World) {}
 
@@ -110,6 +128,11 @@ export class AudioEngine {
     this.mixer = new Mixer(t);
     this.voices = createVoices(t);
     for (const id of INSTRUMENTS) this.voices[id].output.connect(this.mixer.layers[id].input);
+    this.noise = Object.fromEntries(TOWER_TYPES.map((ty) => [ty, new StaticNoiseVoice()])) as Record<TowerType, StaticNoiseVoice>;
+    for (const ty of TOWER_TYPES) this.noise[ty].output.connect(this.mixer.layers[ty].input);
+    // Towers start in the distance, the core starts resting.
+    const now = Tone.now();
+    for (const ty of TOWER_TYPES) this.mixer.layers[ty].setPresence(t.engage.idleCutoff, t.engage.idle, 0.01, now);
     await this.mixer.ready();
 
     tuning.subscribe((path) => this.onTuningChange(path));
@@ -166,16 +189,34 @@ export class AudioEngine {
     const r = this.world.onStep(step, t);
     for (const tw of r.entered) this.liveAt.set(tw.id, time);
 
+    // Mix moves: core resting/rising/active, each layer's presence and damage.
+    this.applyCore(r.core, r.waves.nextWaveStep - step, time, sixteenth, t);
+    const velocityScale = new Map<TowerType, number>();
+    for (const ty of TOWER_TYPES) {
+      const layer = r.layers[ty];
+      this.applyPresence(ty, layer, time, sixteenth, t);
+      this.mixer.layers[ty].setDamage(layer.staticLevel, layer.muffleLevel, time, t);
+      const k = intensity(layer, t);
+      velocityScale.set(ty, layer.mode === 'fighting' ? 0.8 + 0.2 * k : 1);
+    }
+
     const swing = swingOffset(step, t.transport.swing, t.transport.swingGrid as SwingGrid, bpm);
     const hitEvents: HitEvent[] = [];
     for (const hit of r.hits) {
-      const velocity = velocityFor(hit.kind, t.velocity) * hit.gain;
-      this.voices[hit.instrument].trigger(
-        time + swing,
-        { kind: hit.kind, velocity, bar: pos.bar, step, sixteenth, hitIndex: hit.hitIndex },
-        t,
-      );
+      const tower = (TOWER_TYPES as readonly string[]).includes(hit.instrument) ? (hit.instrument as TowerType) : null;
+      const velocity = velocityFor(hit.kind, t.velocity) * (tower ? velocityScale.get(tower)! : 1);
+      const ctx = { kind: hit.kind, velocity, bar: pos.bar, step, sixteenth, hitIndex: hit.hitIndex };
+      this.voices[hit.instrument].trigger(time + swing, ctx, t);
+      if (tower && r.layers[tower].staticLevel > 0.02) {
+        const level = Math.min(r.layers[tower].staticLevel, 1) * dbToGain(t.fx.maxNoise);
+        this.noise[tower].trigger(time + swing, { ...ctx, velocity: level }, t);
+      }
       hitEvents.push({ instrument: hit.instrument, kind: hit.kind, velocity, step });
+    }
+
+    if (r.gameOver && !this.ended) {
+      this.ended = true;
+      this.mixer.fadeOut(sixteenth * 32, time);
     }
 
     this.timeline.push({
@@ -184,10 +225,13 @@ export class AudioEngine {
       step,
       pos,
       chord: chordAtBar(pos.bar).name,
-      playingLayers: r.playingLayers,
+      layers: r.layers,
       playingTowers: r.playingTowers,
       enemies: r.enemies,
       waves: r.waves,
+      core: r.core,
+      drums: r.drums,
+      gameOver: r.gameOver,
     });
     if (this.timeline.length > 64) this.timeline.shift();
 
@@ -200,13 +244,45 @@ export class AudioEngine {
         }
       }, time + swing);
     }
-    if (r.kills.length || r.leaks.length) {
+    if (r.kills.length || r.leaks.length || r.enemyAttacks.length) {
       draw.schedule(() => {
         for (const l of this.listeners) {
           for (const k of r.kills) l.onKill?.(k);
           for (const k of r.leaks) l.onLeak?.(k);
+          for (const a of r.enemyAttacks) l.onEnemyAttack?.(a);
         }
       }, time);
     }
   }
+
+  /** Core: rests between waves, sweeps open over the bar before a wave, snaps open otherwise. */
+  private applyCore(mode: CoreMode, stepsToWave: number, time: number, sixteenth: number, t: Readonly<Tuning>): void {
+    if (mode === this.coreMode) return;
+    const previous = this.coreMode;
+    this.coreMode = mode;
+    if (mode === 'resting') this.mixer.setCore(t.core.restCutoff, t.core.restVolume, previous === null ? 0.01 : sixteenth * 4, time);
+    else if (mode === 'rising') this.mixer.setCore(20000, 0, Math.max(1, stepsToWave) * sixteenth, time);
+    else if (previous !== 'rising') this.mixer.setCore(20000, 0, 0.04, time);
+  }
+
+  /** Tower presence: open (brighter with more enemies) while fighting, distant when idle. */
+  private applyPresence(type: TowerType, layer: LayerSound, time: number, sixteenth: number, t: Readonly<Tuning>): void {
+    if (layer.mode === 'none') return;
+    const target: PresenceTarget =
+      layer.mode === 'fighting'
+        ? { cutoff: t.engage.calmCutoff * Math.pow(20000 / Math.max(t.engage.calmCutoff, 20), intensity(layer, t)), db: 0 }
+        : { cutoff: t.engage.idleCutoff, db: t.engage.idle };
+    const prev = this.presence.get(type);
+    if (prev && Math.abs(prev.cutoff - target.cutoff) < 1 && Math.abs(prev.db - target.db) < 0.1) return;
+    this.presence.set(type, target);
+    const opening = !prev || target.cutoff > prev.cutoff || target.db > prev.db;
+    const ramp = opening ? 0.03 : Math.max(0.02, t.engage.closeBeats * sixteenth * 4);
+    this.mixer.layers[type].setPresence(target.cutoff, target.db, ramp, time);
+  }
+}
+
+/** 0..1: how hard a fighting layer is pushed, by the number of enemies near it. */
+function intensity(layer: LayerSound, t: Readonly<Tuning>): number {
+  if (layer.mode !== 'fighting' || layer.enemies <= 1) return 0;
+  return Math.min(1, (layer.enemies - 1) / Math.max(1, t.engage.fullIntensity - 1));
 }

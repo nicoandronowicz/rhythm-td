@@ -4,18 +4,18 @@
  * Order inside a step:
  *   1. towers queued last bar go live (bar starts only)
  *   2. due enemies spawn
- *   3. enemies move (stun freezes, slow scales speed); enemies past the end reach the core
- *   4. towers with an enemy in range start or keep playing; they hold to the end of the bar
- *   5. drums and playing towers sound on their pattern steps; playing towers attack on those steps
- *   6. dead enemies pay their bounty
+ *   3. each enemy either attacks a tower in reach (on its attack steps; it hovers in place) or moves;
+ *      enemies past the end of the path hit the core and knock drums out
+ *   4. towers with an enemy in range start or keep playing at full presence; they hold to the bar end
+ *   5. drums and towers sound on their pattern steps (idle towers too, quietly); playing towers attack
+ *   6. dead enemies pay their bounty; noise and muffling on towers slowly recover
  */
 
 import type { Tuning } from '../config/tuning';
 import { stepAt, type HitKind, type Pattern } from '../music/patterns';
 import { nextBarStart, stepToPosition } from '../music/timing';
-import { dbToGain } from '../audio/curves';
 import { Board, type Tower } from './board';
-import { DRUM_DEFS, DRUM_ORDER } from './core';
+import { DRUM_DEFS, DRUM_ORDER, type DrumType } from './core';
 import type { EnemyType } from './enemies';
 import { isCoreCell, type Cell } from './grid';
 import type { InstrumentId } from './instruments';
@@ -36,12 +36,14 @@ export interface Enemy {
 }
 
 export interface TowerStats {
+  hp: number;
   cost: number;
   damage: number;
   range: number;
   stun: number;
   slow: number;
   slowSteps: number;
+  muffleShrink: number;
 }
 
 export function towerStats(t: Readonly<Tuning>, type: TowerType): TowerStats {
@@ -53,9 +55,23 @@ export interface SoundHit {
   kind: HitKind;
   /** Which hit of the bar this is (0 = first). Melodic voices use it to pick notes. */
   hitIndex: number;
-  /** Extra gain on top of the hit's velocity (idle towers play quieter). */
-  gain: number;
 }
+
+/** How a tower layer sounds this step. */
+export type LayerMode = 'fighting' | 'idle' | 'none';
+
+export interface LayerSound {
+  mode: LayerMode;
+  /** Enemies in range of the layer's fighting towers. */
+  enemies: number;
+  /** Noise and crush on the layer, 0..1 (worst tower of the type). */
+  staticLevel: number;
+  /** Muffling on the layer, 0..1. */
+  muffleLevel: number;
+}
+
+/** The core's mood: resting between waves, rising in the bar before one, active otherwise. */
+export type CoreMode = 'resting' | 'rising' | 'active';
 
 export interface Attack {
   towerId: number;
@@ -63,6 +79,14 @@ export interface Attack {
   targets: number[];
   /** Where each target was when hit, in cell units. */
   points: Point[];
+}
+
+export interface EnemyAttack {
+  enemyId: number;
+  type: EnemyType;
+  towerId: number;
+  from: Point;
+  destroyed: boolean;
 }
 
 export interface EnemySnapshot {
@@ -82,14 +106,17 @@ export interface StepResult {
   entered: Tower[];
   hits: SoundHit[];
   attacks: Attack[];
+  enemyAttacks: EnemyAttack[];
   kills: { id: number; type: EnemyType; point: Point; bounty: number }[];
-  leaks: { id: number; type: EnemyType }[];
-  /** Tower ids playing on this step. */
+  leaks: { id: number; type: EnemyType; dropped: DrumType | null }[];
+  /** Tower ids playing at full presence on this step. */
   playingTowers: Set<number>;
-  /** Tower layers sounding on this step (at full or idle volume). */
-  playingLayers: Set<TowerType>;
+  layers: Record<TowerType, LayerSound>;
+  core: CoreMode;
+  drums: Record<DrumType, number>;
   enemies: EnemySnapshot[];
   waves: WaveStatus;
+  gameOver: boolean;
 }
 
 export type PlaceResult = { ok: true; tower: Tower } | { ok: false; reason: 'blocked' | 'money' };
@@ -108,17 +135,21 @@ export class World {
   money: number;
   leaked = 0;
   killed = 0;
+  /** Leaks each drum can still take. A drum at 0 has dropped out. */
+  readonly drums: Record<DrumType, number>;
+  gameOver = false;
+  /** Waves fully survived (reached the next one). */
+  wavesSurvived = 0;
   private nextEnemyId = 1;
   /** Step (exclusive) each tower keeps playing until. */
   private playUntil = new Map<number, number>();
 
-  constructor(
-    board: Board,
-    t: Readonly<Tuning>,
-  ) {
+  constructor(board: Board, t: Readonly<Tuning>) {
     this.board = board;
     this.path = new PathGeometry(board.layout);
     this.money = t.economy.startMoney;
+    const hp = Math.max(1, Math.round(t.core.hpPerDrum));
+    this.drums = { hats: hp, clap: hp, kick: hp };
   }
 
   towerCenter(c: Cell): Point {
@@ -134,13 +165,29 @@ export class World {
   }
 
   place(type: TowerType, cell: Cell, t: Readonly<Tuning>): PlaceResult {
-    if (!this.canBuild(cell)) return { ok: false, reason: 'blocked' };
-    const cost = towerStats(t, type).cost;
-    if (this.money < cost) return { ok: false, reason: 'money' };
-    const tower = this.board.place(type, cell);
+    if (this.gameOver || !this.canBuild(cell)) return { ok: false, reason: 'blocked' };
+    const stats = towerStats(t, type);
+    if (this.money < stats.cost) return { ok: false, reason: 'money' };
+    const tower = this.board.place(type, cell, stats.hp);
     if (!tower) return { ok: false, reason: 'blocked' };
-    this.money -= cost;
+    this.money -= stats.cost;
     return { ok: true, tower };
+  }
+
+  repairCost(tower: Tower, t: Readonly<Tuning>): number {
+    return Math.ceil(towerStats(t, tower.type).cost * t.economy.repair);
+  }
+
+  /** Repair a wreck: it comes back on the next bar. */
+  repair(id: number, t: Readonly<Tuning>): { ok: true } | { ok: false; reason: 'money' | 'not-wreck' } {
+    const tower = this.board.get(id);
+    if (!tower || tower.state !== 'wreck' || this.gameOver) return { ok: false, reason: 'not-wreck' };
+    const cost = this.repairCost(tower, t);
+    if (this.money < cost) return { ok: false, reason: 'money' };
+    tower.maxHp = towerStats(t, tower.type).hp;
+    this.board.repair(id);
+    this.money -= cost;
+    return { ok: true };
   }
 
   move(id: number, cell: Cell): boolean {
@@ -148,11 +195,12 @@ export class World {
     return this.board.move(id, cell);
   }
 
-  /** Removes a tower and refunds part of its cost. Returns the refund, or null if there was no tower. */
+  /** Removes a tower and refunds part of its cost (nothing for a wreck). Returns the refund, or null if there was no tower. */
   remove(id: number, t: Readonly<Tuning>): number | null {
     const tower = this.board.remove(id);
     if (!tower) return null;
     this.playUntil.delete(id);
+    if (tower.state === 'wreck') return 0;
     const refund = Math.floor(towerStats(t, tower.type).cost * t.economy.refund);
     this.money += refund;
     return refund;
@@ -164,6 +212,12 @@ export class World {
     return e;
   }
 
+  /** Effective range: muffling shrinks it. */
+  rangeOf(tower: Tower, t: Readonly<Tuning>): number {
+    const s = towerStats(t, tower.type);
+    return s.range * (1 - Math.min(Math.max(s.muffleShrink, 0), 0.9) * tower.muffleLevel);
+  }
+
   inRange(tower: Tower, range: number): Enemy[] {
     const c = this.towerCenter(tower);
     return [...this.enemies.values()].filter((e) => distance(c, this.enemyPoint(e)) <= range);
@@ -173,25 +227,61 @@ export class World {
     return (this.playUntil.get(towerId) ?? -1) > step;
   }
 
+  /** Drums still playing, in drop-out order. */
+  aliveDrums(): DrumType[] {
+    return DRUM_ORDER.filter((d) => this.drums[d] > 0);
+  }
+
   onStep(step: number, t: Readonly<Tuning>): StepResult {
     const { stepInBar } = stepToPosition(step);
+    const empty = this.emptyLayers();
+
+    if (this.gameOver) {
+      return {
+        step,
+        entered: [],
+        hits: [],
+        attacks: [],
+        enemyAttacks: [],
+        kills: [],
+        leaks: [],
+        playingTowers: new Set(),
+        layers: empty,
+        core: 'active',
+        drums: { ...this.drums },
+        enemies: [],
+        waves: this.waves.status(step),
+        gameOver: true,
+      };
+    }
 
     // 1. Towers go live on bar starts.
     const barChange = this.board.onStep(step);
 
-    // 2. Spawns.
+    // 2. Spawns (and count survived waves when a new one starts).
+    const waveBefore = this.waves.status(step).wave;
     for (const s of this.waves.onStep(step, t)) this.addEnemy(s.type, s.hp);
+    const waveNow = this.waves.status(step).wave;
+    if (waveNow > waveBefore && waveBefore > 0) this.wavesSurvived = waveBefore;
 
-    // 3. Movement.
+    // 3. Enemies attack or move.
+    const enemyAttacks: EnemyAttack[] = [];
     const leaks: StepResult['leaks'] = [];
-    for (const e of this.enemies.values()) {
+    const standing = this.board.all().filter((tw) => tw.state === 'live');
+    for (const e of [...this.enemies.values()]) {
+      const target = this.enemyTarget(e, standing, step, t);
+      if (target) {
+        enemyAttacks.push(this.enemyAttack(e, target, t));
+        continue; // hovers while it hits
+      }
       e.progress += this.moveFor(e, t);
       if (e.stunLeft > 0) e.stunLeft--;
       else if (e.slowLeft > 0) e.slowLeft--;
       if (e.progress >= this.path.length) {
-        leaks.push({ id: e.id, type: e.type });
         this.enemies.delete(e.id);
         this.leaked++;
+        leaks.push({ id: e.id, type: e.type, dropped: this.hitCore(t[e.type].leak) });
+        if (this.gameOver) break;
       }
     }
 
@@ -199,7 +289,7 @@ export class World {
     const live = this.board.all().filter((tw) => tw.state === 'live');
     const targets = new Map<number, Enemy[]>();
     for (const tower of live) {
-      const found = this.inRange(tower, towerStats(t, tower.type).range);
+      const found = this.inRange(tower, this.rangeOf(tower, t));
       targets.set(tower.id, found);
       if (found.length === 0) continue;
       const already = this.isPlaying(tower.id, step);
@@ -212,33 +302,41 @@ export class World {
 
     // 5. Sound and attacks.
     const hits: SoundHit[] = [];
-    for (const drum of DRUM_ORDER) {
-      const pattern = DRUM_DEFS[drum].pattern;
-      const kind = stepAt(pattern, stepInBar);
-      if (kind) hits.push({ instrument: drum, kind, hitIndex: hitIndexAt(pattern, stepInBar), gain: 1 });
+    if (!this.gameOver) {
+      for (const drum of this.aliveDrums()) {
+        const pattern = DRUM_DEFS[drum].pattern;
+        const kind = stepAt(pattern, stepInBar);
+        if (kind) hits.push({ instrument: drum, kind, hitIndex: hitIndexAt(pattern, stepInBar) });
+      }
     }
 
-    const playingLayers = new Set<TowerType>();
+    const layers = empty;
     const attacks: Attack[] = [];
-    const idleGain = t.engage.idle <= -60 ? 0 : dbToGain(t.engage.idle);
+    const idleOn = t.engage.idle > -60;
     for (const type of TOWER_TYPES) {
       const ofType = live.filter((tw) => tw.type === type);
-      if (ofType.length === 0) continue;
+      if (ofType.length === 0 || this.gameOver) continue;
       const playing = ofType.filter((tw) => playingTowers.has(tw.id));
-      const gain = playing.length > 0 ? 1 : idleGain;
-      if (gain === 0) continue;
-      playingLayers.add(type);
+      const near = new Set<number>();
+      for (const tw of playing) for (const e of targets.get(tw.id) ?? []) near.add(e.id);
+      layers[type] = {
+        mode: playing.length > 0 ? 'fighting' : idleOn ? 'idle' : 'none',
+        enemies: near.size,
+        staticLevel: Math.max(...ofType.map((tw) => tw.staticLevel)),
+        muffleLevel: Math.max(...ofType.map((tw) => tw.muffleLevel)),
+      };
+      if (layers[type].mode === 'none') continue;
       const pattern = TOWER_DEFS[type].patterns.base;
       const kind = stepAt(pattern, stepInBar);
       if (!kind) continue;
-      hits.push({ instrument: type, kind, hitIndex: hitIndexAt(pattern, stepInBar), gain });
+      hits.push({ instrument: type, kind, hitIndex: hitIndexAt(pattern, stepInBar) });
       for (const tower of playing) {
         const attack = this.attack(tower, targets.get(tower.id) ?? [], t);
         if (attack) attacks.push(attack);
       }
     }
 
-    // 6. Kills.
+    // 6. Kills and recovery.
     const kills: StepResult['kills'] = [];
     for (const e of this.enemies.values()) {
       if (e.hp > 0) continue;
@@ -248,12 +346,20 @@ export class World {
       kills.push({ id: e.id, type: e.type, point: this.enemyPoint(e), bounty });
       this.enemies.delete(e.id);
     }
+    const recover = 1 / (Math.max(0.25, t.fx.recoverBars) * 16);
+    const attacked = new Set(enemyAttacks.map((a) => a.towerId));
+    for (const tw of this.board.all()) {
+      if (attacked.has(tw.id)) continue;
+      tw.staticLevel = Math.max(0, tw.staticLevel - recover);
+      tw.muffleLevel = Math.max(0, tw.muffleLevel - recover);
+    }
 
+    const waves = this.waves.status(step);
     const enemies: EnemySnapshot[] = [...this.enemies.values()].map((e) => ({
       id: e.id,
       type: e.type,
       progress: e.progress,
-      nextMove: this.moveFor(e, t),
+      nextMove: this.willAttackNext(e, step + 1, t) ? 0 : this.moveFor(e, t),
       hp: e.hp,
       maxHp: e.maxHp,
       stunned: e.stunLeft > 0,
@@ -265,13 +371,84 @@ export class World {
       entered: barChange?.entered ?? [],
       hits,
       attacks,
+      enemyAttacks,
       kills,
       leaks,
       playingTowers,
-      playingLayers,
+      layers,
+      core: this.coreMode(step, waves),
+      drums: { ...this.drums },
       enemies,
-      waves: this.waves.status(step),
+      waves,
+      gameOver: this.gameOver,
     };
+  }
+
+  /** Resting once the wave has fully spawned and nobody is on the path; rising in the bar before the next wave. */
+  coreMode(step: number, waves: WaveStatus): CoreMode {
+    if (this.waves.pendingSpawns > 0 || this.enemies.size > 0) return 'active';
+    const toNext = waves.nextWaveStep - step;
+    return toNext > 0 && toNext <= 16 ? 'rising' : 'resting';
+  }
+
+  private emptyLayers(): Record<TowerType, LayerSound> {
+    const none = (): LayerSound => ({ mode: 'none', enemies: 0, staticLevel: 0, muffleLevel: 0 });
+    return { bass: none(), chords: none(), arp: none(), lead: none() };
+  }
+
+  /** Knock `damage` leaks off the core, top drum first. Returns the drum that dropped, if any. */
+  private hitCore(damage: number): DrumType | null {
+    let dropped: DrumType | null = null;
+    let left = Math.max(0, Math.round(damage));
+    while (left > 0) {
+      const drum = this.aliveDrums()[0];
+      if (!drum) break;
+      this.drums[drum]--;
+      left--;
+      if (this.drums[drum] === 0) {
+        dropped = drum;
+        if (drum === 'kick') this.gameOver = true;
+      }
+    }
+    if (this.aliveDrums().length === 0) this.gameOver = true;
+    return dropped;
+  }
+
+  /** The nearest standing tower in reach, if this is one of the enemy's attack steps. */
+  private enemyTarget(e: Enemy, standing: Tower[], step: number, t: Readonly<Tuning>): Tower | null {
+    const s = t[e.type];
+    if (e.stunLeft > 0 || (s.damage <= 0 && s.effect <= 0)) return null;
+    if (step % Math.max(1, Math.round(s.attackEvery)) !== 0) return null;
+    const p = this.enemyPoint(e);
+    let best: Tower | null = null;
+    let bestD = Infinity;
+    for (const tw of standing) {
+      if (tw.state !== 'live') continue;
+      const d = distance(p, this.towerCenter(tw));
+      if (d <= s.reach && d < bestD) {
+        best = tw;
+        bestD = d;
+      }
+    }
+    return best;
+  }
+
+  private willAttackNext(e: Enemy, step: number, t: Readonly<Tuning>): boolean {
+    const standing = this.board.all().filter((tw) => tw.state === 'live');
+    return this.enemyTarget(e, standing, step, t) !== null;
+  }
+
+  private enemyAttack(e: Enemy, tower: Tower, t: Readonly<Tuning>): EnemyAttack {
+    const s = t[e.type];
+    tower.hp -= s.damage;
+    if (e.type === 'static') tower.staticLevel = Math.min(1, tower.staticLevel + s.effect);
+    else tower.muffleLevel = Math.min(1, tower.muffleLevel + s.effect);
+    const destroyed = tower.hp <= 0;
+    if (destroyed) {
+      this.board.wreck(tower.id);
+      this.playUntil.delete(tower.id);
+    }
+    return { enemyId: e.id, type: e.type, towerId: tower.id, from: this.enemyPoint(e), destroyed };
   }
 
   /** Cells an enemy moves on its next step. */

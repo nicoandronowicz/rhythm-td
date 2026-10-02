@@ -13,6 +13,8 @@ export class Hud {
   private waveSub: Phaser.GameObjects.Text;
   private money: Phaser.GameObjects.Text;
   private enemies: Phaser.GameObjects.Text;
+  private core: Phaser.GameObjects.Text;
+  private lastCore = -1;
   private status: Phaser.GameObjects.Text;
   private lastMoney = -1;
 
@@ -36,8 +38,10 @@ export class Hud {
     this.waveSub = text(x0 + 356, y + 8, '', { fontFamily: FONT, fontSize: '12px', color: COLORS.muted, lineSpacing: 2 });
     label(x0 + 530, 'MONEY');
     this.money = text(x0 + 530, y + 11, '', { ...mid, color: '#5dffa8' });
-    label(x0 + 640, 'ENEMIES');
-    this.enemies = text(x0 + 640, y + 11, '', mid);
+    label(x0 + 630, 'ENEMIES');
+    this.enemies = text(x0 + 630, y + 11, '', mid);
+    label(x0 + 790, 'CORE');
+    this.core = text(x0 + 790, y + 11, '', { ...mid, color: '#5dffa8' });
     this.status = text(x0 + 900, y - 10, '', { fontFamily: MONO, fontSize: '12px', color: '#ffc94d' }).setOrigin(1, 0);
   }
 
@@ -71,9 +75,18 @@ export class Hud {
     if (up) this.scene.tweens.add({ targets: this.money, scale: { from: 1.18, to: 1 }, duration: 180 });
   }
 
-  setEnemies(onPath: number, leaked: number): void {
-    this.enemies.setText(`${onPath} on path${leaked ? `\n${leaked} reached core` : ''}`);
-    this.enemies.setFontSize(leaked ? 13 : 18);
+  setEnemies(onPath: number): void {
+    this.enemies.setText(`${onPath} on path`);
+  }
+
+  setCore(left: number, total: number): void {
+    if (left === this.lastCore) return;
+    const hurt = this.lastCore >= 0 && left < this.lastCore;
+    this.lastCore = left;
+    this.core.setText(`${left} / ${total}`);
+    const f = left / total;
+    this.core.setColor(f > 0.66 ? '#5dffa8' : f > 0.33 ? '#ffc94d' : '#ff4d6d');
+    if (hurt) this.scene.tweens.add({ targets: this.core, scale: { from: 1.4, to: 1 }, duration: 260 });
   }
 
   setStatus(s: string): void {

@@ -1,5 +1,34 @@
 # Progress
 
+## 2026-10-02 · Session 3: The beat is your health
+
+**Shipped**
+
+- Feedback from session 2, recorded in `design.md` and `CLAUDE.md`, then built:
+  - Idle towers no longer cut to silence. They play quiet and low-passed, "in the distance" (-15 dB, 700 Hz), open up on their next step when an enemy comes in range, and settle back over a beat.
+  - The more enemies near a fighting tower, the brighter it gets: the filter opens from 4.5 kHz with one enemy to fully open at four, and it plays a bit harder.
+  - The core rests between waves. Once a wave has fully spawned and the path is empty, the drums go low-passed (900 Hz) and 6 dB down. In the last bar before the next wave the filter sweeps open, so the wave lands on the full beat.
+- Enemies attack towers, on the 16th grid, pausing for the moment they hit:
+  - Static: 2 damage every half bar, plus noise crackle on the tower's hits and bitcrush on its channel.
+  - Muffler: a wobbling, resonant low-pass closing on the tower (an 8th-note wobble, so it doesn't sound like idle), and up to 20% less range. No damage.
+  - Caps on every effect: crush mix, noise level, filter floor. Towers recover over 2 bars once the attacks stop.
+- Tower health, with health bars and shake when hit. A destroyed tower becomes a cracked, silent wreck that enemies ignore. Click it to repair for half its price; it comes back on the next bar at full health. Removing a wreck refunds nothing.
+- Core health: each drum takes 3 leaks. Hats drop out first, then clap, then kick. Health shows as pips on the core and "CORE 9 / 9" in the HUD. Kick gone = silence: the run freezes, the mix fades over 2 bars, and a "The beat stopped" screen shows waves survived and Play again.
+- Rebalanced by simulation now that losing is real: tower health doubled, Static slowed down, Muffler range loss capped at 20%. A 4-tower defense lasts to about wave 6, 8 towers to about wave 7, and a full build with repairs to about wave 11.
+- 95 unit tests (13 new): enemy attack cadence and hovering, effect caps and recovery, muffled range, wreck and repair, wreck refund, drum drop order, game over freeze, core rest/rise/active, idle vs fighting, enemies near a tower.
+
+**Known issues**
+
+- Sounds and difficulty set by measurement and simulation, not by ear or real play.
+- Play again reloads the page, so you click start again.
+- Static's noise only plays on the hits of an attacked tower, so a tower that's idle and filtered hides most of it. That's probably right, but listen for it.
+- Saved tuning from earlier sessions still applies; press Reset in the panel if something sounds off.
+
+**Next step**
+
+- Nico plays to a game over a couple of times and sends notes and tuning JSON. Questions to answer: can you hear which tower is under attack? Does idle "in the distance" sound right? Does the core's rest and rise feel good?
+- Then session 4: bigger map (about 22×14) and less repetitive music (8-bar progressions in A minor, a new progression and hook each wave).
+
 ## 2026-10-01 · Session 2: Core, path and enemies
 
 **Shipped**

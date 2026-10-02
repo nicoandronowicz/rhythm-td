@@ -41,8 +41,12 @@ export class GameScene extends Phaser.Scene {
   private cursor!: Phaser.GameObjects.Graphics;
   private ghost!: Phaser.GameObjects.Container;
   private ghostShape!: Phaser.GameObjects.Graphics;
+  private hoverLabel!: Phaser.GameObjects.Text;
 
   private playing = false;
+  /** Audio time the run ended; the screen comes up two bars later. */
+  private gameOverAt: number | null = null;
+  private gameOverShown = false;
   private lastStep = -1;
 
   constructor(
@@ -67,6 +71,11 @@ export class GameScene extends Phaser.Scene {
     this.cursor = this.add.graphics().setDepth(7);
     this.ghostShape = this.add.graphics();
     this.ghost = this.add.container(0, 0, [this.ghostShape]).setDepth(20).setVisible(false);
+    this.hoverLabel = this.add
+      .text(0, 0, '', { fontFamily: MONO, fontSize: '12px', color: COLORS.text, backgroundColor: '#121628', padding: { x: 6, y: 3 }, resolution: RENDER_SCALE })
+      .setOrigin(0.5, 1)
+      .setDepth(40)
+      .setVisible(false);
 
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => this.onDown(p));
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => this.onMove(p));
@@ -102,6 +111,12 @@ export class GameScene extends Phaser.Scene {
       },
       onKill: (k) => this.fx.kill(toScreen(k.point), k.bounty, ENEMY_DEFS[k.type].color),
       onLeak: () => this.core.hit(),
+      onEnemyAttack: (a) => {
+        const view = this.towers.get(a.towerId);
+        if (!view) return;
+        this.fx.enemyAttack(a.type, toScreen(a.from), view.screen);
+        view.struck(a.type === 'static');
+      },
     });
 
     this.select('bass');
@@ -123,10 +138,27 @@ export class GameScene extends Phaser.Scene {
         this.onAudibleStep(a);
       }
       this.drawEnemies(a);
+      if (a.gameOver && this.gameOverAt === null) this.gameOverAt = a.time + a.stepSeconds * 32;
+      if (this.gameOverAt !== null && !this.gameOverShown && this.engine.now() >= this.gameOverAt) {
+        this.gameOverShown = true;
+        this.showGameOver();
+      }
     }
     for (const view of this.towers.values()) {
-      if (!view.live && this.engine.isAudiblyLive(view.tower.id)) view.goLive();
+      view.sync();
+      if (!view.live && view.tower.state === 'live' && this.engine.isAudiblyLive(view.tower.id)) view.goLive();
     }
+  }
+
+  private showGameOver(): void {
+    const n = this.world.wavesSurvived;
+    const box = document.getElementById('gameover')!;
+    document.getElementById('gameover-text')!.textContent =
+      n === 0 ? 'The core fell before the first wave was through.' : `You held the groove through ${n} wave${n === 1 ? '' : 's'}.`;
+    box.hidden = false;
+    const btn = document.getElementById('restart-button') as HTMLButtonElement;
+    btn.onclick = () => window.location.reload();
+    btn.focus();
   }
 
   // ---------- following the audio ----------
@@ -135,13 +167,19 @@ export class GameScene extends Phaser.Scene {
     const { pos } = a;
     this.hud.setStep(pos.bar, pos.beat, pos.sixteenth, a.chord);
     this.hud.setWaves(a.waves, a.step);
-    this.hud.setEnemies(a.enemies.length, this.world.leaked);
+    this.hud.setEnemies(a.enemies.length);
+    const perDrum = Math.max(1, Math.round(tuning.current.core.hpPerDrum));
+    this.hud.setCore(a.drums.hats + a.drums.clap + a.drums.kick, perDrum * 3);
+    this.core.setHealth(a.drums, perDrum);
+    this.core.setResting(a.core === 'resting');
     this.panel.setStep(pos.stepInBar);
 
-    for (const d of ['kick', 'clap', 'hats'] as const) this.panel.setRowState(d, 'on');
+    for (const d of ['kick', 'clap', 'hats'] as const) {
+      this.panel.setRowState(d, a.drums[d] <= 0 ? 'off' : a.core === 'resting' ? 'idle' : 'on');
+    }
     for (const type of TOWER_TYPES) {
-      const built = this.world.board.all().some((t) => t.type === type && t.state === 'live');
-      this.panel.setRowState(type, a.playingLayers.has(type) ? 'on' : built ? 'idle' : 'off');
+      const mode = a.layers[type].mode;
+      this.panel.setRowState(type, mode === 'fighting' ? 'on' : mode === 'idle' ? 'idle' : 'off');
     }
     for (const v of this.towers.values()) v.setPlaying(a.playingTowers.has(v.tower.id));
 
@@ -225,6 +263,16 @@ export class GameScene extends Phaser.Scene {
     view.remove();
   }
 
+  private repairTower(view: TowerView): void {
+    const r = this.world.repair(view.tower.id, tuning.current);
+    if (r.ok) {
+      view.sync();
+      this.fx.say(view.screen, 'Repairing · back next bar', '#5dffa8');
+    } else if (r.reason === 'money') {
+      this.fx.say(view.screen, 'Not enough money');
+    }
+  }
+
   // ---------- input ----------
 
   private select(type: TowerType | null): void {
@@ -285,7 +333,10 @@ export class GameScene extends Phaser.Scene {
     this.ghost.setVisible(false);
     this.panel.drawTrash(false, false);
     if (!d || !d.moved) {
-      if (d?.kind === 'move') d.view.container.setAlpha(1);
+      if (d?.kind === 'move') {
+        d.view.container.setAlpha(1);
+        if (d.view.isWreck) this.repairTower(d.view);
+      }
       this.refreshCursor();
       return;
     }
@@ -307,6 +358,7 @@ export class GameScene extends Phaser.Scene {
   private refreshCursor(): void {
     const g = this.cursor;
     g.clear();
+    this.hoverLabel.setVisible(false);
     const cell = this.hoverCell;
     if (!cell) return;
     const d = this.drag;
@@ -314,7 +366,16 @@ export class GameScene extends Phaser.Scene {
     const occupant = this.world.board.towerAt(cell);
     if (!d?.moved && occupant) {
       this.strokeCell(g, cell, 0xffffff, 0.35);
-      this.strokeRange(g, center, occupant.type);
+      if (occupant.state === 'wreck') {
+        const cost = this.world.repairCost(occupant, tuning.current);
+        this.hoverLabel.setText(`Click to repair · $${cost}`).setPosition(center.x, center.y - 32).setVisible(true);
+        return;
+      }
+      g.fillStyle(TOWER_DEFS[occupant.type].color, 0.06);
+      const r = this.world.rangeOf(occupant, tuning.current) * GRID.cell;
+      g.fillCircle(center.x, center.y, r);
+      g.lineStyle(1.5, TOWER_DEFS[occupant.type].color, 0.5);
+      g.strokeCircle(center.x, center.y, r);
       return;
     }
     const type = d?.moved ? (d.kind === 'new' ? d.type : d.view.tower.type) : this.selected;

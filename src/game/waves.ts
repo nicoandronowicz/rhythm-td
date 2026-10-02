@@ -91,6 +91,11 @@ export class WaveClock {
     return due;
   }
 
+  /** Enemies of the current wave still waiting to spawn. */
+  get pendingSpawns(): number {
+    return this.pending.length;
+  }
+
   status(step: number): WaveStatus {
     const next = this.nextStart ?? 0;
     if (!this.current) return { phase: 'intro', wave: 0, nextWaveStep: next };

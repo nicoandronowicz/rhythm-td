@@ -66,7 +66,25 @@ body {
   margin: 8px 0 36px;
 }
 
-#start-button {
+#gameover[hidden] {
+  display: none;
+}
+
+#gameover {
+  animation: fade-in 1.2s ease;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+#start-button,
+#restart-button {
   font: 600 18px var(--font);
   color: #fff;
   background: var(--accent);
@@ -78,7 +96,8 @@ body {
   animation: beat 0.968s ease-out infinite;
 }
 
-#start-button:focus-visible {
+#start-button:focus-visible,
+#restart-button:focus-visible {
   outline: 2px solid #fff;
   outline-offset: 4px;
 }

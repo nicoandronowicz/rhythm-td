@@ -129,13 +129,41 @@ export const DEFAULT_TUNING = {
     quantize: 1,
     /** After the last enemy leaves, keep playing to the end of this many bars (1 = end of the current bar). */
     holdBars: 1,
-    /** Volume of towers with nobody in range, dB. -60 = silent. */
-    idle: -60,
+    /** Volume of towers with nobody in range ("in the distance"), dB. -60 = silent. */
+    idle: -15,
+    /** Low-pass on idle towers, Hz. */
+    idleCutoff: 700,
+    /** How long a tower takes to settle back to idle, beats. */
+    closeBeats: 1,
+    /** Low-pass on a tower fighting one enemy, Hz. Opens fully as more enemies come. */
+    calmCutoff: 4500,
+    /** Enemies in range for full brightness and punch. */
+    fullIntensity: 4,
+  },
+  core: {
+    /** Leaks each drum can take before it drops out (hats, then clap, then kick). */
+    hpPerDrum: 3,
+    /** Low-pass on the resting core between waves, Hz. */
+    restCutoff: 900,
+    /** Resting core volume, dB. */
+    restVolume: -6,
+  },
+  fx: {
+    /** Bars for a tower to fully recover from noise or muffling once enemies stop. */
+    recoverBars: 2,
+    /** Hard caps: bitcrush mix, noise level (dB), lowest muffle filter (Hz). */
+    maxCrush: 0.55,
+    maxNoise: -12,
+    muffleFloor: 450,
+    /** Muffler wobble depth, octaves. */
+    wobble: 1.5,
   },
   economy: {
     startMoney: 120,
     /** Share of the cost given back when a tower is removed. */
     refund: 0.5,
+    /** Share of the cost to repair a wreck. */
+    repair: 0.5,
   },
   waves: {
     /** Drums-only bars before the first wave. */
@@ -160,13 +188,31 @@ export const DEFAULT_TUNING = {
     /** Cells per beat. */
     speed: 0.75,
     bounty: 6,
+    /** Core damage when it gets through. */
+    leak: 1,
+    /** Reach for attacking towers, cells. */
+    reach: 1.2,
+    /** 16ths between attacks (4 = every beat). */
+    attackEvery: 8,
+    /** Tower HP taken per attack. */
+    damage: 2,
+    /** Noise and crush added to the tower per attack, 0..1. */
+    effect: 0.25,
   },
   muffler: {
     hp: 55,
     speed: 0.55,
     bounty: 9,
+    leak: 1,
+    reach: 1.4,
+    attackEvery: 4,
+    damage: 0,
+    /** Muffling added to the tower per attack, 0..1. Also shrinks its range. */
+    effect: 0.3,
   },
   bassTower: {
+    /** Tower health. */
+    hp: 120,
     cost: 40,
     damage: 2,
     /** Radius in cells. */
@@ -177,30 +223,41 @@ export const DEFAULT_TUNING = {
     slow: 0.35,
     /** Steps the slow lasts. */
     slowSteps: 8,
+    /** Range taken away at full muffling, 0..0.9. */
+    muffleShrink: 0.2,
   },
   chordsTower: {
+    /** Tower health. */
+    hp: 120,
     cost: 60,
     damage: 7,
     range: 1.7,
     stun: 1,
     slow: 0,
     slowSteps: 0,
+    muffleShrink: 0.2,
   },
   arpTower: {
+    /** Tower health. */
+    hp: 90,
     cost: 50,
     damage: 3,
     range: 3.2,
     stun: 0,
     slow: 0,
     slowSteps: 0,
+    muffleShrink: 0.2,
   },
   leadTower: {
+    /** Tower health. */
+    hp: 140,
     cost: 70,
     damage: 22,
     range: 1.6,
     stun: 0,
     slow: 0,
     slowSteps: 0,
+    muffleShrink: 0.2,
   },
 };
 
@@ -254,6 +311,20 @@ export const TUNING_FIELDS: readonly TuningField[] = [
   { path: 'engage.quantize', label: 'Comes in on', min: 1, max: 4, step: 3, group: 'Towers play', options: [{ value: 1, label: 'next 16th' }, { value: 4, label: 'next beat' }] },
   { path: 'engage.holdBars', label: 'Hold (bars)', min: 1, max: 4, step: 1, group: 'Towers play' },
   { path: 'engage.idle', label: 'Idle volume', min: -60, max: 0, step: 1, unit: 'dB', group: 'Towers play' },
+  { path: 'engage.idleCutoff', label: 'Idle filter', min: 150, max: 20000, step: 50, unit: 'Hz', group: 'Towers play' },
+  { path: 'engage.closeBeats', label: 'Settle time', min: 0.25, max: 8, step: 0.25, unit: 'beats', group: 'Towers play' },
+  { path: 'engage.calmCutoff', label: 'Filter, 1 enemy', min: 500, max: 20000, step: 50, unit: 'Hz', group: 'Towers play' },
+  { path: 'engage.fullIntensity', label: 'Full open at', min: 1, max: 12, step: 1, unit: 'enemies', group: 'Towers play' },
+
+  { path: 'core.hpPerDrum', label: 'Leaks per drum', min: 1, max: 20, step: 1, group: 'Core' },
+  { path: 'core.restCutoff', label: 'Resting filter', min: 150, max: 20000, step: 50, unit: 'Hz', group: 'Core' },
+  { path: 'core.restVolume', label: 'Resting volume', min: -30, max: 0, step: 0.5, unit: 'dB', group: 'Core' },
+
+  { path: 'fx.recoverBars', label: 'Recover time', min: 0.25, max: 16, step: 0.25, unit: 'bars', group: 'Enemy effects' },
+  { path: 'fx.maxCrush', label: 'Max crush', min: 0, max: 1, step: 0.05, unit: '%', group: 'Enemy effects' },
+  { path: 'fx.maxNoise', label: 'Max noise', min: -40, max: 0, step: 0.5, unit: 'dB', group: 'Enemy effects' },
+  { path: 'fx.muffleFloor', label: 'Muffle floor', min: 100, max: 4000, step: 25, unit: 'Hz', group: 'Enemy effects' },
+  { path: 'fx.wobble', label: 'Muffle wobble', min: 0, max: 4, step: 0.1, unit: 'oct', group: 'Enemy effects' },
 
   { path: 'waves.firstDelayBars', label: 'First wave after', min: 0, max: 16, step: 1, unit: 'bars', group: 'Waves' },
   { path: 'waves.lengthBars', label: 'Wave length', min: 4, max: 32, step: 1, unit: 'bars', group: 'Waves' },
@@ -267,6 +338,7 @@ export const TUNING_FIELDS: readonly TuningField[] = [
 
   { path: 'economy.startMoney', label: 'Start money', min: 0, max: 1000, step: 10, group: 'Money' },
   { path: 'economy.refund', label: 'Refund on remove', min: 0, max: 1, step: 0.05, unit: '%', group: 'Money' },
+  { path: 'economy.repair', label: 'Repair price', min: 0, max: 1, step: 0.05, unit: '%', group: 'Money' },
 
   ...towerFields('bassTower', 'Bass tower'),
   ...towerFields('chordsTower', 'Chords tower'),
@@ -333,12 +405,14 @@ export const TUNING_FIELDS: readonly TuningField[] = [
 
 function towerFields(section: 'bassTower' | 'chordsTower' | 'arpTower' | 'leadTower', group: string): TuningField[] {
   return [
+    { path: `${section}.hp`, label: 'Health', min: 1, max: 500, step: 1, group, advanced: true },
     { path: `${section}.cost`, label: 'Cost', min: 0, max: 500, step: 5, group, advanced: true },
     { path: `${section}.damage`, label: 'Damage', min: 0, max: 100, step: 0.5, group, advanced: true },
     { path: `${section}.range`, label: 'Range', min: 0.5, max: 8, step: 0.1, unit: 'cells', group, advanced: true },
     { path: `${section}.stun`, label: 'Stun', min: 0, max: 16, step: 1, unit: '16ths', group, advanced: true },
     { path: `${section}.slow`, label: 'Slow', min: 0, max: 0.9, step: 0.05, unit: '%', group, advanced: true },
     { path: `${section}.slowSteps`, label: 'Slow length', min: 0, max: 32, step: 1, unit: '16ths', group, advanced: true },
+    { path: `${section}.muffleShrink`, label: 'Range lost muffled', min: 0, max: 0.9, step: 0.05, unit: '%', group, advanced: true },
   ];
 }
 
@@ -347,5 +421,10 @@ function enemyFields(section: 'static' | 'muffler', group: string): TuningField[
     { path: `${section}.hp`, label: 'HP', min: 1, max: 500, step: 1, group, advanced: true },
     { path: `${section}.speed`, label: 'Speed', min: 0.1, max: 3, step: 0.05, unit: 'cells/beat', group, advanced: true },
     { path: `${section}.bounty`, label: 'Bounty', min: 0, max: 100, step: 1, group, advanced: true },
+    { path: `${section}.leak`, label: 'Core damage', min: 0, max: 9, step: 1, group, advanced: true },
+    { path: `${section}.reach`, label: 'Attack reach', min: 0, max: 5, step: 0.1, unit: 'cells', group, advanced: true },
+    { path: `${section}.attackEvery`, label: 'Attacks every', min: 1, max: 16, step: 1, unit: '16ths', group, advanced: true },
+    { path: `${section}.damage`, label: 'Tower damage', min: 0, max: 100, step: 1, group, advanced: true },
+    { path: `${section}.effect`, label: 'Sound effect', min: 0, max: 1, step: 0.05, group, advanced: true },
   ];
 }

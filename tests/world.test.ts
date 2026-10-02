@@ -120,8 +120,8 @@ describe('movement', () => {
 });
 
 describe('towers play only while fighting', () => {
-  it('a placed tower is silent with no enemy in range', () => {
-    const t = quiet();
+  it('with idle off, a placed tower is silent with no enemy in range', () => {
+    const t = quiet((x) => (x.engage.idle = -60));
     const { world, run, results } = setup(t);
     world.place('arp', NEAR_START, t);
     run(48);
@@ -130,7 +130,7 @@ describe('towers play only while fighting', () => {
   });
 
   it('starts on its next pattern step when an enemy is in range', () => {
-    const t = quiet();
+    const t = quiet((x) => (x.engage.idle = -60));
     const { world, run, results } = setup(t);
     world.place('arp', NEAR_START, t);
     run(17); // live from step 16
@@ -142,7 +142,7 @@ describe('towers play only while fighting', () => {
   });
 
   it('holds to the end of the bar after the enemy is gone, then stops', () => {
-    const t = quiet();
+    const t = quiet((x) => (x.engage.idle = -60));
     const { world, run, results } = setup(t);
     world.place('arp', NEAR_START, t);
     run(17);
@@ -157,7 +157,10 @@ describe('towers play only while fighting', () => {
   });
 
   it('"next beat" waits for the beat before coming in', () => {
-    const t = quiet((x) => (x.engage.quantize = 4));
+    const t = quiet((x) => {
+      x.engage.quantize = 4;
+      x.engage.idle = -60;
+    });
     const { world, run, results } = setup(t);
     world.place('arp', NEAR_START, t);
     run(17);
@@ -177,15 +180,27 @@ describe('towers play only while fighting', () => {
     expect(results.every((r) => r.attacks.length === 0)).toBe(true);
   });
 
-  it('idle volume lets placed towers play quietly without attacking', () => {
-    const t = quiet((x) => (x.engage.idle = -12));
+  it('idle towers keep playing their part (in the distance) without attacking', () => {
+    const t = quiet();
     const { world, run, results } = setup(t);
     world.place('arp', NEAR_START, t);
     run(32);
     const idle = results.slice(16).flatMap((r) => r.hits.filter((h) => h.instrument === 'arp'));
     expect(idle).toHaveLength(8);
-    expect(idle[0]!.gain).toBeLessThan(1);
+    expect(results.slice(16).every((r) => r.layers.arp.mode === 'idle')).toBe(true);
     expect(results.every((r) => r.attacks.length === 0)).toBe(true);
+  });
+
+  it('switches from idle to fighting when an enemy comes, and reports how many are near', () => {
+    const t = quiet();
+    const { world, run, results } = setup(t);
+    world.place('arp', NEAR_START, t);
+    run(17);
+    for (const p of [1.8, 2.2, 2.6]) world.addEnemy('static', 999, p).stunLeft = 999;
+    run(1);
+    expect(results[16]!.layers.arp.mode).toBe('idle');
+    expect(results[17]!.layers.arp.mode).toBe('fighting');
+    expect(results[17]!.layers.arp.enemies).toBe(3);
   });
 
   it('several towers of one type: one sound, separate attacks', () => {
@@ -258,6 +273,181 @@ describe('attacks', () => {
     world.addEnemy('static', 9999, 2).stunLeft = 999;
     run(32);
     expect(results.every((r) => r.attacks.length === 0)).toBe(true);
+  });
+});
+
+describe('enemies attack towers', () => {
+  it('Static hits the nearest tower on its attack steps, hovering while it does', () => {
+    const t = quiet((x) => (x.static.speed = 0));
+    const { world, run, results } = setup(t);
+    const r = world.place('lead', NEAR_START, t);
+    if (!r.ok) throw new Error();
+    run(16);
+    world.addEnemy('static', 9999, 1.9);
+    run(16);
+    const hitSteps = results.filter((x) => x.enemyAttacks.length).map((x) => x.step);
+    expect(hitSteps.length).toBeGreaterThan(0);
+    for (const s of hitSteps) expect(s % t.static.attackEvery).toBe(0);
+    expect(r.tower.hp).toBeLessThan(r.tower.maxHp);
+    expect(r.tower.staticLevel).toBeGreaterThan(0);
+  });
+
+  it('an enemy does not move on a step it attacks', () => {
+    const t = quiet();
+    const { world, run } = setup(t);
+    world.place('lead', NEAR_START, t);
+    run(16); // next step (16) is an attack step
+    const e = world.addEnemy('static', 9999, 1.9);
+    run(1);
+    expect(e.progress).toBe(1.9);
+    run(1);
+    expect(e.progress).toBeGreaterThan(1.9);
+  });
+
+  it('effects are capped at 1 and recover when the attacks stop', () => {
+    const t = quiet((x) => {
+      x.static.effect = 0.6;
+      x.static.speed = 0;
+    });
+    const { world, run } = setup(t);
+    const r = world.place('lead', NEAR_START, t);
+    if (!r.ok) throw new Error();
+    r.tower.hp = r.tower.maxHp = 1e9;
+    run(16);
+    const e = world.addEnemy('static', 1e9, 1.9);
+    run(17);
+    expect(r.tower.staticLevel).toBeLessThanOrEqual(1);
+    expect(r.tower.staticLevel).toBeGreaterThan(0.5);
+    world.enemies.delete(e.id);
+    run(16 * t.fx.recoverBars + 1);
+    expect(r.tower.staticLevel).toBe(0);
+  });
+
+  it('Muffler muffles and shrinks the range, without damage by default', () => {
+    const t = quiet();
+    const { world, run } = setup(t);
+    const r = world.place('lead', NEAR_START, t);
+    if (!r.ok) throw new Error();
+    run(16);
+    world.addEnemy('muffler', 9999, 1.9);
+    run(8);
+    expect(r.tower.hp).toBe(r.tower.maxHp);
+    expect(r.tower.muffleLevel).toBeGreaterThan(0);
+    expect(world.rangeOf(r.tower, t)).toBeLessThan(t.leadTower.range);
+  });
+
+  it('a destroyed tower becomes a silent wreck that nobody targets', () => {
+    const t = quiet((x) => (x.static.damage = 1000));
+    const { world, run, results } = setup(t);
+    const r = world.place('arp', NEAR_START, t);
+    if (!r.ok) throw new Error();
+    run(16);
+    world.addEnemy('static', 9999, 1.9);
+    run(1);
+    expect(r.tower.state).toBe('wreck');
+    expect(results[16]!.enemyAttacks[0]!.destroyed).toBe(true);
+    run(32);
+    expect(results.slice(17).some((x) => x.hits.some((h) => h.instrument === 'arp'))).toBe(false);
+    expect(results.slice(17).some((x) => x.enemyAttacks.length > 0)).toBe(false);
+  });
+
+  it('repairing a wreck costs half its price and brings it back on the next bar at full health', () => {
+    const t = quiet((x) => (x.static.damage = 1000));
+    const { world, run } = setup(t);
+    const r = world.place('arp', NEAR_START, t);
+    if (!r.ok) throw new Error();
+    run(16);
+    const e = world.addEnemy('static', 9999, 1.9);
+    run(1);
+    world.enemies.delete(e.id);
+    const money = world.money;
+    expect(world.repair(r.tower.id, t).ok).toBe(true);
+    expect(world.money).toBe(money - Math.ceil(t.arpTower.cost * t.economy.repair));
+    expect(r.tower.state).toBe('queued');
+    run(16); // through the next bar start (step 32)
+    expect(r.tower.state).toBe('live');
+    expect(r.tower.hp).toBe(t.arpTower.hp);
+  });
+
+  it('removing a wreck refunds nothing', () => {
+    const t = quiet((x) => (x.static.damage = 1000));
+    const { world, run } = setup(t);
+    const r = world.place('arp', NEAR_START, t);
+    if (!r.ok) throw new Error();
+    run(16);
+    world.addEnemy('static', 9999, 1.9);
+    run(1);
+    expect(world.remove(r.tower.id, t)).toBe(0);
+  });
+});
+
+describe('the core', () => {
+  it('leaks knock drums out in order: hats, then clap, then kick = game over', () => {
+    const t = quiet((x) => (x.core.hpPerDrum = 2));
+    const { world, run, results } = setup(t);
+    const leak = () => {
+      world.addEnemy('static', 999, world.path.length - 0.01);
+      return run(1);
+    };
+    leak();
+    expect(world.drums).toEqual({ hats: 1, clap: 2, kick: 2 });
+    expect(leak().leaks[0]!.dropped).toBe('hats');
+    leak();
+    expect(leak().leaks[0]!.dropped).toBe('clap');
+    leak();
+    expect(world.gameOver).toBe(false);
+    const last = leak();
+    expect(last.leaks[0]!.dropped).toBe('kick');
+    expect(last.gameOver).toBe(true);
+    expect(results.length).toBe(6);
+  });
+
+  it('a dropped drum stops playing; after game over everything is silent and frozen', () => {
+    const t = quiet((x) => (x.core.hpPerDrum = 1));
+    const { world, run, results } = setup(t);
+    world.addEnemy('static', 999, world.path.length - 0.01);
+    run(16);
+    expect(results.slice(1).some((r) => r.hits.some((h) => h.instrument === 'hats'))).toBe(false);
+    expect(results.slice(1).some((r) => r.hits.some((h) => h.instrument === 'kick'))).toBe(true);
+    world.addEnemy('static', 999, world.path.length - 0.01);
+    world.addEnemy('static', 999, world.path.length - 0.01);
+    run(1);
+    expect(world.gameOver).toBe(true);
+    const e = world.addEnemy('static', 999, 3);
+    const after = run(16);
+    expect(after.hits).toEqual([]);
+    expect(e.progress).toBe(3);
+    expect(world.place('bass', FAR, t).ok).toBe(false);
+  });
+
+  it('rests between waves with nobody around, rises in the bar before a wave, active during it', () => {
+    const t = JSON.parse(JSON.stringify(DEFAULT_TUNING)) as Tuning;
+    t.waves.firstDelayBars = 2;
+    const { world, run, results } = setup(t);
+    run(16 * 3);
+    expect(results[0]!.core).toBe('resting');
+    expect(results[15]!.core).toBe('resting');
+    expect(results[16]!.core).toBe('rising');
+    expect(results[31]!.core).toBe('rising');
+    expect(results[32]!.core).toBe('active');
+    expect(world).toBeDefined();
+  });
+
+  it('rests as soon as a wave is cleared, even before its 16 bars are up', () => {
+    const t = JSON.parse(JSON.stringify(DEFAULT_TUNING)) as Tuning;
+    t.waves.firstDelayBars = 0;
+    t.waves.countBase = 1;
+    const { world, run } = setup(t);
+    expect(run(1).core).toBe('active');
+    world.enemies.clear();
+    expect(run(1).core).toBe('resting');
+  });
+
+  it('stays active in a breakdown while enemies are still on the path', () => {
+    const t = quiet();
+    const { world, run } = setup(t);
+    world.addEnemy('static', 999, 1).stunLeft = 999;
+    expect(run(1).core).toBe('active');
   });
 });
 

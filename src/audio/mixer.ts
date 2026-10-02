@@ -2,31 +2,63 @@
  * Mixer: one channel per instrument (drums and towers), shared room reverb and ping-pong delay,
  * and the master bus.
  *
- *   voice -> [bitcrush (dry)] -> [low-pass (open)] -> channel (volume, pan) -> master
- *                                                     channel -> sends -> room / delay -> master
+ *   voice -> bitcrush (Static) -> wobbling low-pass (Muffler) -> presence low-pass + volume -> channel -> bus
+ *   drums: bus = core bus (low-pass + volume: rests between waves) -> master
+ *   towers: bus = master; channel -> sends -> room / delay -> master
  *   master: volume -> low cut -> glue compressor -> limiter -> safety clipper -> speakers
  *
- * The bitcrush and low-pass inserts are neutral for now; enemies will drive them later.
+ * Enemy inserts are neutral until something attacks; presence is how close a tower sounds
+ * (open while fighting, quiet and filtered in the distance when idle). Changes are scheduled
+ * at transport times handed in by the engine.
  */
 
 import * as Tone from 'tone';
 import type { Tuning } from '../config/tuning';
+import { DRUM_DEFS } from '../game/core';
 import { INSTRUMENTS, type InstrumentId } from '../game/instruments';
 import { dbToGain, safetyCurve } from './curves';
 
+const OPEN = 20000;
+
 export class LayerChannel {
   readonly input = new Tone.Gain(1);
-  readonly crusher = new Tone.BitCrusher(16);
-  readonly lowpass = new Tone.Filter({ type: 'lowpass', frequency: 20000, rolloff: -24, Q: 0.5 });
+  readonly crusher = new Tone.BitCrusher(5);
+  readonly muffle = new Tone.Filter({ type: 'lowpass', frequency: OPEN, rolloff: -24, Q: 0.7 });
+  /** Muffler wobble, an 8th-note LFO on the muffle filter. Flat (min = max = open) when nothing muffles. */
+  private readonly wobble = new Tone.LFO({ frequency: '8n', min: OPEN, max: OPEN });
+  readonly presence = new Tone.Filter({ type: 'lowpass', frequency: OPEN, rolloff: -12, Q: 0.6 });
+  readonly presenceVolume = new Tone.Volume(0);
   readonly channel = new Tone.Channel();
 
   constructor(destination: Tone.ToneAudioNode) {
     this.crusher.wet.value = 0;
-    this.input.chain(this.crusher, this.lowpass, this.channel, destination);
+    this.wobble.connect(this.muffle.frequency);
+    this.wobble.sync().start(0);
+    this.input.chain(this.crusher, this.muffle, this.presence, this.presenceVolume, this.channel, destination);
+  }
+
+  /** Static noise/crush and Muffler muffling, both 0..1, with hard caps from tuning. */
+  setDamage(staticLevel: number, muffleLevel: number, time: number, t: Readonly<Tuning>): void {
+    this.crusher.wet.rampTo(Math.min(Math.max(staticLevel, 0), 1) * Math.min(t.fx.maxCrush, 1), 0.05, time);
+    const m = Math.min(Math.max(muffleLevel, 0), 1);
+    const floor = Math.max(t.fx.muffleFloor, 20);
+    const center = OPEN * Math.pow(floor / OPEN, m);
+    const half = Math.pow(2, (t.fx.wobble * m) / 2);
+    this.wobble.min = Math.max(floor, center / half);
+    this.wobble.max = Math.min(OPEN, center * half);
+    this.muffle.Q.rampTo(0.7 + 5 * m, 0.05, time);
+  }
+
+  /** How close the layer sounds. */
+  setPresence(cutoff: number, db: number, ramp: number, time: number): void {
+    this.presence.frequency.cancelScheduledValues(time);
+    this.presence.frequency.exponentialRampTo(Math.min(Math.max(cutoff, 60), OPEN), ramp, time);
+    this.presenceVolume.volume.cancelScheduledValues(time);
+    this.presenceVolume.volume.rampTo(db, ramp, time);
   }
 
   dispose(): void {
-    for (const n of [this.input, this.crusher, this.lowpass, this.channel]) n.dispose();
+    for (const n of [this.input, this.crusher, this.muffle, this.wobble, this.presence, this.presenceVolume, this.channel]) n.dispose();
   }
 }
 
@@ -62,6 +94,10 @@ export class Mixer {
   private readonly delay = new Tone.PingPongDelay({ delayTime: 0.36, feedback: 0.3, wet: 1 });
   private readonly delayReturn = new Tone.Channel();
 
+  /** The core's drums go through here: it rests (low-passed, quieter) between waves. */
+  private readonly coreFilter = new Tone.Filter({ type: 'lowpass', frequency: OPEN, rolloff: -24, Q: 0.8 });
+  private readonly coreVolume = new Tone.Volume(0);
+
   private readonly sendGains: { gain: Tone.Gain; level: keyof Tuning['sends'] }[] = [];
   readonly layers: Record<InstrumentId, LayerChannel>;
 
@@ -71,10 +107,10 @@ export class Mixer {
     this.roomIn.chain(this.reverb, this.roomReturn, this.master);
     this.delayIn.chain(this.delay, this.delayReturn, this.master);
 
-    this.layers = Object.fromEntries(INSTRUMENTS.map((id) => [id, new LayerChannel(this.master)])) as Record<
-      InstrumentId,
-      LayerChannel
-    >;
+    this.coreFilter.chain(this.coreVolume, this.master);
+    this.layers = Object.fromEntries(
+      INSTRUMENTS.map((id) => [id, new LayerChannel(id in DRUM_DEFS ? this.coreFilter : this.master)]),
+    ) as Record<InstrumentId, LayerChannel>;
     for (const s of SENDS) {
       const gain = new Tone.Gain(0);
       this.layers[s.from].channel.connect(gain);
@@ -87,6 +123,20 @@ export class Mixer {
   /** Wait for the reverb impulse to be generated. */
   ready(): Promise<void> {
     return this.reverb.ready;
+  }
+
+  /** Move the core toward a filter and volume over `ramp` seconds, starting at `time`. */
+  setCore(cutoff: number, db: number, ramp: number, time: number): void {
+    this.coreFilter.frequency.cancelScheduledValues(time);
+    this.coreFilter.frequency.exponentialRampTo(Math.min(Math.max(cutoff, 60), OPEN), ramp, time);
+    this.coreVolume.volume.cancelScheduledValues(time);
+    this.coreVolume.volume.rampTo(db, ramp, time);
+  }
+
+  /** Fade everything out (game over). */
+  fadeOut(seconds: number, time: number): void {
+    this.master.volume.cancelScheduledValues(time);
+    this.master.volume.rampTo(-80, seconds, time);
   }
 
   /** Keep the delay on a dotted 8th. */
