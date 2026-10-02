@@ -1,6 +1,6 @@
 # Rhythm TD Design Doc v0.1
 
-Last updated Sep 30, 2026 (after the session 1 review). Source of truth for design decisions.
+Last updated Oct 2, 2026 (after the session 2 review). Source of truth for design decisions.
 
 ## Concept
 
@@ -41,7 +41,7 @@ Endless mode for the prototype: build, survive a 16-bar wave, repeat. Campaign l
 Loop, in order:
 
 1. Place or upgrade towers, or upgrade the drum core (any time; costs currency). New towers are ready from the next bar.
-2. Between waves only the drum core plays, like a breakdown.
+2. Between waves the drum core rests (filtered and quieter, ready) and the towers play softly in the distance. In the last bar before a wave the core's filter sweeps open.
 3. A 16-bar wave walks the path. Each tower plays, and attacks, only while an enemy is in its range, so the track builds up as the wave moves down the path.
 4. Enemies attack the sound. Noise and filters degrade instruments; a destroyed tower goes silent until rebuilt. Enemies that reach the core knock drums out of the beat.
 5. Is the kick still playing? Yes: earn currency, next wave is harder, back to step 1. No: silence, the run is over.
@@ -56,7 +56,7 @@ Harmony for the prototype: A minor, alternating Am7 and Fmaj7 every 2 bars, so a
 
 ### The drum core
 
-The drums are not towers. They are the core: the thing you defend, sitting at the end of the path. Kick, clap and hats always play, so the track always has a beat, even between waves and even in a losing run.
+The drums are not towers. They are the core: the thing you defend, sitting at the end of the path. Kick, clap and hats always play, so the track always has a beat, even between waves and even in a losing run. Between waves, with no enemies on the path, the core rests: low-passed and a bit quieter, ready. In the last bar before a wave its filter sweeps open, so the wave lands on the full beat.
 
 | Drum | Pattern (16 steps) | Drops out |
 | --- | --- | --- |
@@ -71,7 +71,9 @@ Upgrading the core (costs currency) adds a percussion layer, such as a 16th shak
 Towers are the melodic and harmonic layers. A tower plays its pattern and attacks on the same steps, so you hear every shot, but only while it is fighting:
 
 - An enemy enters its range: the tower starts playing from its next step.
-- The last enemy leaves or dies: the tower keeps playing to the end of the bar, then goes quiet.
+- The last enemy leaves or dies: the tower keeps playing to the end of the bar, then settles back to idle.
+- Idle is not silent: an idle tower plays quiet and low-passed, heard in the distance. Fighting opens it up. In later waves, with enemies everywhere, most towers stay open.
+- The more enemies in range, the brighter and harder the tower plays.
 - How fast a tower engages (next step, next beat) and how long it holds are tunable.
 
 This turns the path into the arrangement. Towers near the entrance come in first each wave, towers near the core come in last, and more towers along the path means the layer plays for longer. Placing is arranging.
@@ -95,7 +97,7 @@ Movement is smooth, but attacks and sound effects only land on the 16th-note gri
 | Enemy | What you hear | Game effect | In MVP |
 | --- | --- | --- | --- |
 | Static | Noise and bitcrush creeping into the instrument | Tower takes damage | Yes |
-| Muffler | A low-pass filter closing on the instrument | Tower range shrinks while hit | Yes |
+| Muffler | A resonant low-pass closing and wobbling on the instrument (the wobble tells it apart from an idle tower) | Tower range shrinks while hit | Yes |
 | Detuner | The synth drifts out of tune, capped at 30 to 50 cents | Tower misfires some steps | Later |
 | Ducker | Everything pumps and ducks, like heavy sidechain | All towers slow down briefly | Later |
 
@@ -105,7 +107,7 @@ Kill notes (a note on every kill) are dropped for now: the towers already carry 
 
 - Enemies that reach the core damage it. Core health is split across its drum layers, and damage knocks them out one by one: added percussion first, then hats, then clap, then kick.
 - The kick dropping means silence and game over.
-- A destroyed tower goes silent until you rebuild it. Losing towers hurts your defense, not your life.
+- A destroyed tower becomes a silent wreck on the grid. Repairing it costs half its price (tunable); its layer comes back on the next bar. Losing towers hurts your defense, not your life.
 
 ### Guardrails that keep it musical
 
@@ -252,3 +254,12 @@ Decided on 30 Sep 2026, after testing session 1:
 - Towers play only while an enemy is in range, holding to the end of the bar, so the wave's path becomes the arrangement
 - Kill notes dropped for now
 - Combos to be redesigned for the melodic towers (drafts above)
+
+Decided on 2 Oct 2026, after testing session 2:
+
+- Idle towers play quiet and low-passed instead of silent; more enemies in range = brighter and harder
+- The core rests between waves (filtered, quieter) and sweeps open in the last bar before a wave
+- Destroyed towers leave a wreck that can be repaired for half price
+- Session 4: a bigger map on the same screen (about 22×14 cells, path about twice as long)
+- Session 4: less repetition. An 8-bar progression in A minor instead of the 2-chord vamp, a hook and arp that change each wave, and a new progression in A minor each wave (curated list)
+- Later, in a sound-depth session: pads or strings, richer synths, groove (sidechain pumping, width). Kept off the out-of-scope list as long as they are tower or core sounds, not a background bed

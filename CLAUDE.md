@@ -60,7 +60,7 @@ Unit test the music module, pattern and quantization logic, next-bar queueing, c
 ## Musical spec (prototype)
 
 - 124 BPM, 4/4, 16 steps per bar. A wave is 16 bars.
-- Key: A minor. Chords alternate every 2 bars: Am7 (A C E G), then Fmaj7 (F A C E).
+- Key: A minor. Chords alternate every 2 bars: Am7 (A C E G), then Fmaj7 (F A C E). From session 4: 8-bar progressions in A minor, a new one each wave (see design.md).
 - Melodic notes come from the current chord or A minor pentatonic (A C D E G). Kill notes are dropped for now.
 - No background bed. The drum core always plays; towers add everything else.
 
@@ -89,10 +89,11 @@ The mix has to sound good on laptop speakers and headphones. Aim for "Nico wants
 
 - One map, one fixed path, grid placement beside the path.
 - The drum core sits at the end of the path and always plays. Core health is split across its drum layers; leaked enemies knock them out (added percussion, then hats, clap, kick). Kick gone = game over. Core upgrades add percussion = fuller groove + more health.
-- Towers play, and attack on the steps they play, only while an enemy is in range; they hold to the end of the bar after the last target leaves. Several towers of one type = one sound, separate attacks.
+- Towers play at full presence, and attack on the steps they play, only while an enemy is in range; they hold to the end of the bar after the last target leaves. Otherwise they play idle: quiet and low-passed (in the distance). More enemies in range = brighter and harder. Several towers of one type = one sound, separate attacks.
+- Between waves with no enemies on the path, the core rests (low-passed, quieter) and sweeps open in the last bar before a wave.
 - Combat roles: lead = heavy single target, short range; chords = area pulse with a short stun; arp = fast light damage, long range; bass = slows enemies on a stretch of path.
 - Enemies: Static (noise and crush creep into the attacked tower's channel, deals damage) and Muffler (closes the low-pass on the attacked tower, shrinks its range while attacking).
-- A destroyed tower goes silent until rebuilt. It costs defense, not life.
+- A destroyed tower becomes a silent wreck; repairing costs half its price and its layer returns on the next bar. It costs defense, not life.
 - One currency, earned per kill, spent any time on towers, tower upgrades or core upgrades.
 - After each wave: pick 1 of 3 rewards (new pattern, combo boost, or a modifier like +10% swing).
 - Combos by adjacency, drafts to confirm in session 4: Sidechain (bass next to chords: both hit harder on the 16th after each kick), Call and response (lead next to arp: lead crits on the backbeat), Full band (bass, chords and arp touching: more range).
@@ -106,10 +107,12 @@ One milestone per session. Don't start the next until Nico has tested the curren
 
 1. Sound first. Scaffold, deploy to GitHub Pages, start screen, transport, grid, place the 4 towers (free for now), layers enter on the next bar, pulses on beat, HUD bar:beat, basic tuning panel. Goal: does the groove sound good? (Done; led to the drum-core redesign.)
 2. Core, path and enemies. Drum core at the path's end, the 4 melodic towers (bass, chords, arp, lead), Static and Muffler walking the path, towers engaging and attacking on their steps, currency and costs.
-3. The beat is your health. Enemies attack towers, audible damage, tower destruction, leaks damaging the core, drums dropping out, game over, endless wave scaling.
-4. Upgrades (towers and core) and combos.
-5. Pick 1 of 3 rewards.
-6. Balance and polish pass from Nico's play-test notes.
+3. The beat is your health. Enemies attack towers, audible damage, tower destruction and repair, leaks damaging the core, drums dropping out, game over, endless wave scaling. Plus: idle towers in the distance, the core resting between waves, towers reacting to how many enemies are near.
+4. Bigger map (about 22×14 on the same screen) and less repetitive music (8-bar progressions, a new progression and hook each wave).
+5. Upgrades (towers and core, beat variations as perks) and combos.
+6. Pick 1 of 3 rewards.
+7. Sound depth: pads or strings, richer synths, groove.
+8. Balance and polish pass from Nico's play-test notes.
 
 ## Out of scope
 
