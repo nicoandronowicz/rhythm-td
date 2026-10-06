@@ -30,6 +30,8 @@ import { ClapVoice } from './instruments/clap';
 import { HatsVoice } from './instruments/hats';
 import { KickVoice } from './instruments/kick';
 import { LeadVoice } from './instruments/lead';
+import { RimVoice } from './instruments/rim';
+import { ShakerVoice } from './instruments/shaker';
 import { Mixer } from './mixer';
 import { StaticNoiseVoice } from './instruments/staticNoise';
 import { dbToGain } from './curves';
@@ -50,6 +52,9 @@ export interface AudibleState {
   waves: WaveStatus;
   core: CoreMode;
   drums: Record<DrumType, number>;
+  combos: StepResult['combos'];
+  layerUpgraded: StepResult['layerUpgraded'];
+  perksOwned: StepResult['perksOwned'];
   gameOver: boolean;
 }
 
@@ -83,6 +88,9 @@ export function createVoices(t: Readonly<Tuning>): Record<InstrumentId, Voice> {
     chords: new ChordsVoice(),
     arp: new ArpVoice(),
     lead: new LeadVoice(),
+    shaker: new ShakerVoice(),
+    rim: new RimVoice(),
+    openhat: new HatsVoice((x) => x.openhat.decay),
   };
 }
 
@@ -200,10 +208,15 @@ export class AudioEngine {
     }
 
     const swing = swingOffset(step, t.transport.swing, t.transport.swingGrid as SwingGrid, bpm);
+    const crits = new Set(r.attacks.filter((a) => a.crit).map((a) => a.type));
     const hitEvents: HitEvent[] = [];
     for (const hit of r.hits) {
       const tower = (TOWER_TYPES as readonly string[]).includes(hit.instrument) ? (hit.instrument as TowerType) : null;
-      const velocity = velocityFor(hit.kind, t.velocity) * (tower ? velocityScale.get(tower)! : 1);
+      const kind = tower && crits.has(tower) ? 'accent' : hit.kind;
+      const velocity = velocityFor(kind, t.velocity) * (tower ? velocityScale.get(tower)! : 1) * (kind !== hit.kind ? 1.15 : 1);
+      if (hit.instrument === 'kick') {
+        for (const ty of r.pump) this.mixer.layers[ty].duck(t.combos.sidechainPump, sixteenth * 3, time + swing);
+      }
       const ctx = {
         kind: hit.kind,
         velocity,
@@ -239,6 +252,9 @@ export class AudioEngine {
       waves: r.waves,
       core: r.core,
       drums: r.drums,
+      combos: r.combos,
+      layerUpgraded: r.layerUpgraded,
+      perksOwned: r.perksOwned,
       gameOver: r.gameOver,
     });
     if (this.timeline.length > 64) this.timeline.shift();

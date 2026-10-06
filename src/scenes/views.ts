@@ -27,6 +27,9 @@ const CORE_SLOTS: Partial<Record<DrumType, { col: number; row: number }>> = {
   kick: { col: 0, row: 0 },
   clap: { col: 0, row: 1 },
   hats: { col: 0, row: 2 },
+  shaker: { col: 1, row: 0 },
+  rim: { col: 1, row: 1 },
+  openhat: { col: 1, row: 2 },
 };
 
 export function setCoreSlot(drum: DrumType, col: number, row: number): void {
@@ -153,6 +156,8 @@ export class TowerView {
   private muffleTint: Phaser.GameObjects.Arc;
   private hpBack: Phaser.GameObjects.Rectangle;
   private hpBar: Phaser.GameObjects.Rectangle;
+  private badge: Phaser.GameObjects.Graphics;
+  private badgeState: 'none' | 'queued' | 'done' = 'none';
   private wrecked = false;
   private staticLevel = 0;
   /** Went live: its entry bar has been heard. */
@@ -180,8 +185,13 @@ export class TowerView {
     this.muffleTint = scene.add.circle(0, 0, TOWER_SIZE / 2 + 3, 0x6f7bd6, 1).setAlpha(0);
     this.hpBack = scene.add.rectangle(-12, -19, 24, 3, 0x000000, 0.6).setOrigin(0, 0.5).setVisible(false);
     this.hpBar = scene.add.rectangle(-12, -19, 24, 3, 0x5dffa8, 1).setOrigin(0, 0.5).setVisible(false);
+    // Upgrade badge: two small chevrons above the tower.
+    this.badge = scene.add.graphics({ x: 0, y: -2 }).setVisible(false);
+    this.badge.lineStyle(2, 0xffffff, 1);
+    this.badge.strokePoints([new Phaser.Math.Vector2(-4, -5), new Phaser.Math.Vector2(0, -9), new Phaser.Math.Vector2(4, -5)]);
+    this.badge.strokePoints([new Phaser.Math.Vector2(-4, -1), new Phaser.Math.Vector2(0, -5), new Phaser.Math.Vector2(4, -1)]);
     this.container = scene.add
-      .container(p.x, p.y, [this.glow, this.ring, this.body, this.outline, this.wreckShape, this.muffleTint, this.hpBack, this.hpBar])
+      .container(p.x, p.y, [this.glow, this.ring, this.body, this.outline, this.wreckShape, this.muffleTint, this.hpBack, this.hpBar, this.badge])
       .setDepth(10);
     this.applyLook();
     this.container.setScale(0.6);
@@ -248,6 +258,15 @@ export class TowerView {
     this.hpBar.setFillStyle(f > 0.5 ? 0x5dffa8 : f > 0.25 ? 0xffc94d : 0xff4d6d);
     this.muffleTint.setAlpha(wreck ? 0 : t.muffleLevel * 0.45);
     this.staticLevel = wreck ? 0 : t.staticLevel;
+
+    const badge = t.upgraded ? 'done' : t.upgradeQueued ? 'queued' : 'none';
+    if (badge !== this.badgeState) {
+      this.badgeState = badge;
+      this.scene.tweens.killTweensOf(this.badge);
+      this.badge.setVisible(badge !== 'none').setAlpha(1);
+      if (badge === 'queued') this.scene.tweens.add({ targets: this.badge, alpha: 0.3, yoyo: true, repeat: -1, duration: 240 });
+      if (badge === 'done') this.scene.tweens.add({ targets: this.container, scale: { from: 1.35, to: 1 }, duration: 260, ease: 'Back.easeOut' });
+    }
   }
 
   /** Under attack: a quick shake, harder with more Static on it. */
@@ -365,6 +384,14 @@ export class Effects {
         this.scene.tweens.add({ targets: hit, scale: 1.8, alpha: 0, duration: 200, onComplete: () => hit.destroy() });
       }
     }
+  }
+
+  crit(at: Point): void {
+    const txt = this.scene.add
+      .text(at.x, at.y - 8, 'CRIT', { fontFamily: MONO, fontSize: '11px', fontStyle: 'bold', color: '#ff9ec7', resolution: RENDER_SCALE })
+      .setOrigin(0.5)
+      .setDepth(18);
+    this.scene.tweens.add({ targets: txt, y: at.y - 26, alpha: 0, duration: 520, onComplete: () => txt.destroy() });
   }
 
   kill(at: Point, bounty: number, color: number): void {

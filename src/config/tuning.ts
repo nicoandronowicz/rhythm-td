@@ -22,6 +22,9 @@ export const DEFAULT_TUNING = {
     chords: -3,
     arp: -7,
     lead: -2,
+    shaker: -11.5,
+    rim: 0,
+    openhat: -11,
     /** Shared short room reverb, return level. */
     room: -10,
     /** Shared dotted-8th delay, return level. */
@@ -96,6 +99,20 @@ export const DEFAULT_TUNING = {
     /** Sub sine on the root, dB. */
     sub: -3,
   },
+  shaker: {
+    /** Band centre, Hz. */
+    tone: 8000,
+    /** Length, seconds. */
+    decay: 0.04,
+  },
+  rim: {
+    /** Length, seconds. */
+    decay: 0.06,
+  },
+  openhat: {
+    /** Length, seconds. */
+    decay: 0.3,
+  },
   chords: {
     /** Filter opening at the start of the stab, Hz. */
     tone: 3200,
@@ -143,8 +160,12 @@ export const DEFAULT_TUNING = {
     fullIntensity: 4,
   },
   core: {
-    /** Leaks each drum can take before it drops out (hats, then clap, then kick). */
+    /** Leaks each drum can take before it drops out (perks, then hats, then clap, then kick). */
     hpPerDrum: 3,
+    /** Perk prices. */
+    shakerCost: 60,
+    rimCost: 80,
+    openhatCost: 100,
     /** Low-pass on the resting core between waves, Hz. */
     restCutoff: 900,
     /** Resting core volume, dB. */
@@ -159,6 +180,17 @@ export const DEFAULT_TUNING = {
     muffleFloor: 450,
     /** Muffler wobble depth, octaves. */
     wobble: 1.5,
+  },
+  combos: {
+    /** Sidechain (bass next to chords): damage multiplier on the half beat after each kick. */
+    sidechainBoost: 1.5,
+    /** How hard the chords and bass pump with the kick, dB. */
+    sidechainPump: -9,
+    /** Call and response (lead next to arp): crit chance on lead hits, and crit damage. */
+    callCrit: 0.3,
+    callCritDamage: 2,
+    /** Full band (bass, chords and arp touching): extra range, 0.2 = +20%. */
+    fullBandRange: 0.2,
   },
   economy: {
     startMoney: 120,
@@ -227,6 +259,10 @@ export const DEFAULT_TUNING = {
     slowSteps: 8,
     /** Range taken away at full muffling, 0..0.9. */
     muffleShrink: 0.2,
+    /** Upgrade price, damage multiplier and extra range (cells). */
+    upgradeCost: 50,
+    upgradeDamage: 1.4,
+    upgradeRange: 0.3,
   },
   chordsTower: {
     /** Tower health. */
@@ -238,6 +274,10 @@ export const DEFAULT_TUNING = {
     slow: 0,
     slowSteps: 0,
     muffleShrink: 0.2,
+    /** Upgrade price, damage multiplier and extra range (cells). */
+    upgradeCost: 70,
+    upgradeDamage: 1.5,
+    upgradeRange: 0.3,
   },
   arpTower: {
     /** Tower health. */
@@ -249,6 +289,10 @@ export const DEFAULT_TUNING = {
     slow: 0,
     slowSteps: 0,
     muffleShrink: 0.2,
+    /** Upgrade price, damage multiplier and extra range (cells). */
+    upgradeCost: 60,
+    upgradeDamage: 1.3,
+    upgradeRange: 0.4,
   },
   leadTower: {
     /** Tower health. */
@@ -260,6 +304,10 @@ export const DEFAULT_TUNING = {
     slow: 0,
     slowSteps: 0,
     muffleShrink: 0.2,
+    /** Upgrade price, damage multiplier and extra range (cells). */
+    upgradeCost: 80,
+    upgradeDamage: 1.6,
+    upgradeRange: 0.2,
   },
 };
 
@@ -307,6 +355,9 @@ export const TUNING_FIELDS: readonly TuningField[] = [
   { path: 'mix.chords', label: 'Chords', min: -40, max: 6, step: 0.5, unit: 'dB', group: 'Volume' },
   { path: 'mix.arp', label: 'Arp', min: -40, max: 6, step: 0.5, unit: 'dB', group: 'Volume' },
   { path: 'mix.lead', label: 'Lead', min: -40, max: 6, step: 0.5, unit: 'dB', group: 'Volume' },
+  { path: 'mix.shaker', label: 'Shaker', min: -40, max: 6, step: 0.5, unit: 'dB', group: 'Volume' },
+  { path: 'mix.rim', label: 'Rim', min: -40, max: 6, step: 0.5, unit: 'dB', group: 'Volume' },
+  { path: 'mix.openhat', label: 'Open hat', min: -40, max: 6, step: 0.5, unit: 'dB', group: 'Volume' },
   { path: 'mix.room', label: 'Room reverb', min: -40, max: 0, step: 0.5, unit: 'dB', group: 'Volume' },
   { path: 'mix.delay', label: 'Delay', min: -40, max: 0, step: 0.5, unit: 'dB', group: 'Volume' },
 
@@ -320,8 +371,17 @@ export const TUNING_FIELDS: readonly TuningField[] = [
   { path: 'engage.fullIntensity', label: 'Full open at', min: 1, max: 12, step: 1, unit: 'enemies', group: 'Towers play' },
 
   { path: 'core.hpPerDrum', label: 'Leaks per drum', min: 1, max: 20, step: 1, group: 'Core' },
+  { path: 'core.shakerCost', label: 'Shaker price', min: 0, max: 500, step: 5, group: 'Core' },
+  { path: 'core.rimCost', label: 'Rim price', min: 0, max: 500, step: 5, group: 'Core' },
+  { path: 'core.openhatCost', label: 'Open hat price', min: 0, max: 500, step: 5, group: 'Core' },
   { path: 'core.restCutoff', label: 'Resting filter', min: 150, max: 20000, step: 50, unit: 'Hz', group: 'Core' },
   { path: 'core.restVolume', label: 'Resting volume', min: -30, max: 0, step: 0.5, unit: 'dB', group: 'Core' },
+
+  { path: 'combos.sidechainBoost', label: 'Sidechain dmg', min: 1, max: 4, step: 0.05, unit: '×', group: 'Combos' },
+  { path: 'combos.sidechainPump', label: 'Sidechain pump', min: -30, max: 0, step: 0.5, unit: 'dB', group: 'Combos' },
+  { path: 'combos.callCrit', label: 'Call crit chance', min: 0, max: 1, step: 0.05, unit: '%', group: 'Combos' },
+  { path: 'combos.callCritDamage', label: 'Call crit dmg', min: 1, max: 5, step: 0.1, unit: '×', group: 'Combos' },
+  { path: 'combos.fullBandRange', label: 'Full band range', min: 0, max: 1, step: 0.05, unit: '%', group: 'Combos' },
 
   { path: 'fx.recoverBars', label: 'Recover time', min: 0.25, max: 16, step: 0.25, unit: 'bars', group: 'Enemy effects' },
   { path: 'fx.maxCrush', label: 'Max crush', min: 0, max: 1, step: 0.05, unit: '%', group: 'Enemy effects' },
@@ -382,6 +442,10 @@ export const TUNING_FIELDS: readonly TuningField[] = [
   { path: 'bass.mid', label: 'Mid layer', min: -40, max: 6, step: 0.5, unit: 'dB', group: 'Bass', advanced: true },
   { path: 'bass.sub', label: 'Sub', min: -40, max: 6, step: 0.5, unit: 'dB', group: 'Bass', advanced: true },
 
+  { path: 'shaker.tone', label: 'Tone', min: 3000, max: 14000, step: 100, unit: 'Hz', group: 'Shaker', advanced: true },
+  { path: 'shaker.decay', label: 'Decay', min: 0.01, max: 0.2, step: 0.005, unit: 's', group: 'Shaker', advanced: true },
+  { path: 'rim.decay', label: 'Decay', min: 0.01, max: 0.3, step: 0.005, unit: 's', group: 'Rim', advanced: true },
+  { path: 'openhat.decay', label: 'Decay', min: 0.05, max: 1, step: 0.01, unit: 's', group: 'Open hat', advanced: true },
   { path: 'chords.tone', label: 'Tone', min: 500, max: 9000, step: 50, unit: 'Hz', group: 'Chords', advanced: true },
   { path: 'chords.body', label: 'Body', min: 200, max: 4000, step: 25, unit: 'Hz', group: 'Chords', advanced: true },
   { path: 'chords.decay', label: 'Decay', min: 0.05, max: 1.2, step: 0.01, unit: 's', group: 'Chords', advanced: true },
@@ -416,6 +480,9 @@ function towerFields(section: 'bassTower' | 'chordsTower' | 'arpTower' | 'leadTo
     { path: `${section}.slow`, label: 'Slow', min: 0, max: 0.9, step: 0.05, unit: '%', group, advanced: true },
     { path: `${section}.slowSteps`, label: 'Slow length', min: 0, max: 32, step: 1, unit: '16ths', group, advanced: true },
     { path: `${section}.muffleShrink`, label: 'Range lost muffled', min: 0, max: 0.9, step: 0.05, unit: '%', group, advanced: true },
+    { path: `${section}.upgradeCost`, label: 'Upgrade price', min: 0, max: 500, step: 5, group, advanced: true },
+    { path: `${section}.upgradeDamage`, label: 'Upgrade dmg', min: 1, max: 4, step: 0.05, unit: '×', group, advanced: true },
+    { path: `${section}.upgradeRange`, label: 'Upgrade range', min: 0, max: 3, step: 0.1, unit: 'cells', group, advanced: true },
   ];
 }
 

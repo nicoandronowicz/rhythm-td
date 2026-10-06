@@ -28,13 +28,15 @@ export class LayerChannel {
   private readonly wobble = new Tone.LFO({ frequency: '8n', min: OPEN, max: OPEN });
   readonly presence = new Tone.Filter({ type: 'lowpass', frequency: OPEN, rolloff: -12, Q: 0.6 });
   readonly presenceVolume = new Tone.Volume(0);
+  /** Sidechain pump: dips on each kick when the combo is on. */
+  readonly pump = new Tone.Gain(1);
   readonly channel = new Tone.Channel();
 
   constructor(destination: Tone.ToneAudioNode) {
     this.crusher.wet.value = 0;
     this.wobble.connect(this.muffle.frequency);
     this.wobble.sync().start(0);
-    this.input.chain(this.crusher, this.muffle, this.presence, this.presenceVolume, this.channel, destination);
+    this.input.chain(this.crusher, this.muffle, this.presence, this.presenceVolume, this.pump, this.channel, destination);
   }
 
   /** Static noise/crush and Muffler muffling, both 0..1, with hard caps from tuning. */
@@ -49,6 +51,14 @@ export class LayerChannel {
     this.muffle.Q.rampTo(0.7 + 5 * m, 0.05, time);
   }
 
+  /** Duck on a kick and swell back: the classic house pump. */
+  duck(depthDb: number, release: number, time: number): void {
+    const g = this.pump.gain;
+    g.cancelScheduledValues(time);
+    g.setValueAtTime(Math.pow(10, depthDb / 20), time + 0.004);
+    g.setTargetAtTime(1, time + 0.012, release / 3);
+  }
+
   /** How close the layer sounds. */
   setPresence(cutoff: number, db: number, ramp: number, time: number): void {
     this.presence.frequency.cancelScheduledValues(time);
@@ -58,7 +68,7 @@ export class LayerChannel {
   }
 
   dispose(): void {
-    for (const n of [this.input, this.crusher, this.muffle, this.wobble, this.presence, this.presenceVolume, this.channel]) n.dispose();
+    for (const n of [this.input, this.crusher, this.muffle, this.wobble, this.presence, this.presenceVolume, this.pump, this.channel]) n.dispose();
   }
 }
 

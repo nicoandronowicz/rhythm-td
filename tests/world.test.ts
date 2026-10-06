@@ -13,8 +13,8 @@ function quiet(edit: (t: Tuning) => void = () => {}): Tuning {
   return t;
 }
 
-function setup(t: Tuning) {
-  const world = new World(new Board(PROTOTYPE_MAP), t);
+function setup(t: Tuning, rng: () => number = () => 0.5) {
+  const world = new World(new Board(PROTOTYPE_MAP), t, rng);
   let step = 0;
   const results: StepResult[] = [];
   const run = (n: number) => {
@@ -390,7 +390,7 @@ describe('the core', () => {
       return run(1);
     };
     leak();
-    expect(world.drums).toEqual({ hats: 1, clap: 2, kick: 2 });
+    expect(world.drums).toMatchObject({ hats: 1, clap: 2, kick: 2 });
     expect(leak().leaks[0]!.dropped).toBe('hats');
     leak();
     expect(leak().leaks[0]!.dropped).toBe('clap');
@@ -480,6 +480,142 @@ describe('harmony', () => {
     for (let i = 1; i < results.length; i++) {
       if (results[i]!.step % 16 !== 0) expect(results[i]!.harmony.chord).toBe(results[i - 1]!.harmony.chord);
     }
+  });
+});
+
+describe('upgrades', () => {
+  it('cost money, join on the next bar, and switch to the upgraded pattern', () => {
+    const t = quiet((x) => (x.engage.idle = -60));
+    const { world, run, results } = setup(t);
+    const r = world.place('arp', NEAR_START, t);
+    if (!r.ok) throw new Error();
+    run(20);
+    const money = world.money;
+    expect(world.upgrade(r.tower.id, t).ok).toBe(true);
+    expect(world.money).toBe(money - t.arpTower.upgradeCost);
+    expect(r.tower.upgraded).toBe(false);
+    run(12); // to step 31
+    expect(r.tower.upgraded).toBe(false);
+    run(1); // step 32: bar start
+    expect(r.tower.upgraded).toBe(true);
+    world.addEnemy('static', 1e9, 1.9).stunLeft = 999;
+    run(16); // 33..48
+    const arpSteps = results.filter((x) => x.step > 32 && x.step < 48 && x.hits.some((h) => h.instrument === 'arp')).map((x) => x.step);
+    expect(arpSteps.length).toBeGreaterThan(8); // 16ths, not 8ths
+    const attacks = results.filter((x) => x.step > 32 && x.step < 48 && x.attacks.length).length;
+    expect(attacks).toBe(arpSteps.length);
+  });
+
+  it('upgraded towers hit harder and reach further; you cannot upgrade twice', () => {
+    const t = quiet();
+    const { world, run } = setup(t);
+    const r = world.place('lead', NEAR_START, t);
+    if (!r.ok) throw new Error();
+    const base = world.rangeOf(r.tower, t);
+    world.upgrade(r.tower.id, t);
+    expect(world.upgrade(r.tower.id, t)).toEqual({ ok: false, reason: 'done' });
+    run(1);
+    expect(world.rangeOf(r.tower, t)).toBeCloseTo(base + t.leadTower.upgradeRange);
+    const e = world.addEnemy('static', 1e9, 1.9);
+    e.stunLeft = 999;
+    run(16);
+    const hits = 4; // upgraded lead: x......x..x...x.
+    expect(1e9 - e.hp).toBeCloseTo(hits * t.leadTower.damage * t.leadTower.upgradeDamage);
+  });
+
+  it('removing an upgraded tower refunds part of the upgrade too', () => {
+    const t = quiet();
+    const { world } = setup(t);
+    const r = world.place('bass', NEAR_START, t);
+    if (!r.ok) throw new Error();
+    world.upgrade(r.tower.id, t);
+    const money = world.money;
+    const refund = world.remove(r.tower.id, t)!;
+    expect(refund).toBe(Math.floor((t.bassTower.cost + t.bassTower.upgradeCost) * t.economy.refund));
+    expect(world.money).toBe(money + refund);
+  });
+});
+
+describe('core perks', () => {
+  it('a bought perk joins on the next bar, plays its part and adds a drum of health', () => {
+    const t = quiet();
+    const { world, run, results } = setup(t);
+    run(5);
+    expect(world.buyPerk('shaker', t).ok).toBe(true);
+    expect(world.buyPerk('shaker', t)).toEqual({ ok: false, reason: 'playing' });
+    run(11); // to step 15
+    expect(results.some((r) => r.hits.some((h) => h.instrument === 'shaker'))).toBe(false);
+    run(16);
+    expect(results.slice(16).filter((r) => r.hits.some((h) => h.instrument === 'shaker'))).toHaveLength(16);
+    const per = t.core.hpPerDrum;
+    expect(world.coreHealth(t)).toEqual({ left: per * 4, total: per * 4 });
+  });
+
+  it('perks drop out first, before the hats, and can be bought again', () => {
+    const t = quiet((x) => (x.core.hpPerDrum = 1));
+    const { world, run } = setup(t);
+    world.buyPerk('rim', t);
+    run(1);
+    world.addEnemy('static', 999, world.path.length - 0.01);
+    expect(run(1).leaks[0]!.dropped).toBe('rim');
+    expect(world.drums.hats).toBe(1);
+    expect(world.buyPerk('rim', t).ok).toBe(true);
+    run(16);
+    expect(world.hasPerk('rim')).toBe(true);
+  });
+
+  it('costs money', () => {
+    const t = quiet((x) => (x.economy.startMoney = 10));
+    const { world } = setup(t);
+    expect(world.buyPerk('openhat', t)).toEqual({ ok: false, reason: 'money' });
+  });
+});
+
+describe('combos in play', () => {
+  it('Sidechain: bass hits harder right after a kick, and the layers pump', () => {
+    const t = quiet();
+    const { world, run, results } = setup(t);
+    world.place('bass', NEAR_START, t);
+    world.place('chords', { col: 2, row: 2 }, t);
+    run(16);
+    world.addEnemy('static', 1e9, 1.9).stunLeft = 999;
+    run(16);
+    const bassAttacks = results.flatMap((r) => r.attacks.filter((a) => a.type === 'bass'));
+    expect(bassAttacks.length).toBeGreaterThan(0);
+    expect(bassAttacks.every((a) => a.sidechain)).toBe(true); // bass plays the 8th after every kick
+    expect(results[20]!.pump.has('chords')).toBe(true);
+  });
+
+  it('Call & response: the lead crits when the dice say so, never without the arp', () => {
+    const t = quiet();
+    const lucky = setup(t, () => 0);
+    lucky.world.place('lead', NEAR_START, t);
+    lucky.world.place('arp', { col: 2, row: 2 }, t);
+    lucky.run(16);
+    lucky.world.addEnemy('static', 1e9, 1.9).stunLeft = 999;
+    lucky.run(16);
+    const leadHits = lucky.results.flatMap((r) => r.attacks.filter((a) => a.type === 'lead'));
+    expect(leadHits.length).toBeGreaterThan(0);
+    expect(leadHits.every((a) => a.crit)).toBe(true);
+
+    const alone = setup(t, () => 0);
+    alone.world.place('lead', NEAR_START, t);
+    alone.run(16);
+    alone.world.addEnemy('static', 1e9, 1.9).stunLeft = 999;
+    alone.run(16);
+    expect(alone.results.flatMap((r) => r.attacks).some((a) => a.crit)).toBe(false);
+  });
+
+  it('Full band extends range', () => {
+    const t = quiet();
+    const { world, run } = setup(t);
+    const b = world.place('bass', { col: 5, row: 9 }, t);
+    world.place('chords', { col: 6, row: 9 }, t);
+    world.place('arp', { col: 7, row: 9 }, t);
+    if (!b.ok) throw new Error();
+    run(1);
+    expect(world.combos.byTower.get(b.tower.id)?.has('fullBand')).toBe(true);
+    expect(world.rangeOf(b.tower, t)).toBeCloseTo(t.bassTower.range * (1 + t.combos.fullBandRange));
   });
 });
 

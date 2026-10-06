@@ -1,5 +1,42 @@
 # Progress
 
+## 2026-10-06 · Sessions 4 + 5: Bigger map, less repetition, upgrades, perks and combos
+
+Built together at Nico's request, with session 4 committed as a checkpoint first.
+
+**Shipped**
+
+- Session 4:
+  - Map: 22×14 grid on the same screen (40 px cells) with a 55-cell winding path (was 29): two loops, and corners where one tower covers two stretches. The core is now a 3×4 block.
+  - Music: five 8-bar progressions in A minor (2 bars per chord), one per wave, cycling: Am7–Fmaj7–Cmaj7–G, Am7–Dm7–Fmaj7–Em7, Fmaj7–G–Am7–Am7, Am7–Em7–Fmaj7–G, Dm7–Am7–Fmaj7–G.
+    - The lead picks notes that fit the current chord (chord tones plus pentatonic notes that don't rub) and gets a new hook shape each wave (5 shapes).
+    - The arp walks the chord in a new direction each wave (up, up-down, down, broken).
+  - Wave indicator: big wave number; "N enemies left · next wave in Xs" or "Clear · wave N in Xs"; a progress bar; a "WAVE N" banner when a wave starts and "WAVE N CLEARED" when it's done.
+  - Towers less on/off: idle is now -9 dB and 1.5 kHz (was -15 dB and 700 Hz). Towers fade in over a beat and settle back over two.
+  - Enemies are faster for the longer path. Static: 1.0 cells/beat, Muffler: 0.75.
+- Session 5:
+  - Tower upgrades, per tower. Click a tower to upgrade it; it switches to its upgraded pattern on the next bar (more hits, more attacks), with more damage and range. A chevron badge marks it. The layer plays the upgraded part whenever an upgraded tower of that type is playing.
+  - Core perks: click the core for Shaker ($60), Rim/perc ($80, tuned to E) and Open hat ($100). Each joins on the next bar, adds groove and one more drum's worth of core health, and drops out before the hats. A perk can be bought again after it drops.
+  - Combos (touching, diagonals count), with links drawn on the board and a shout when one forms:
+    - Sidechain: bass + chords hit ×1.5 in the half beat after each kick, and both channels pump with the kick (-9 dB).
+    - Call & response: lead + arp gives the lead a 30% chance of a double-damage crit, played as an accent with a CRIT pop.
+    - Full band: bass, chords and arp in one touching cluster reach 20% further.
+- New sounds balanced by measurement against the kick: shaker about -13 dB, rim about -10, open hat about -10. The full mix with all 10 parts peaks at -0.7 dBFS.
+- Difficulty, simulated: a plain build with repairs lasts to wave 11; with upgrades, 13; combo-aware placement, 13; combos + upgrades + perks, 16.
+- 113 unit tests (+15): progressions, safe lead notes across every chord/motif/bar, arp styles, harmony switching per wave, combo detection, upgrades, perks, sidechain/crit/full band effects.
+
+**Known issues**
+
+- Call & response deviates from the draft (crits on any lead hit, not the backbeat). Needs Nico's OK.
+- Clicking a tower now upgrades it, so a click meant to start a drag can spend money if the mouse doesn't move. Drag threshold is 6 px.
+- Tower shapes are smaller on the bigger map; may be hard to read on a phone.
+- Sounds and difficulty were set by measurement and simulation, not by ear or real play.
+
+**Next step**
+
+- Nico plays several waves with upgrades, perks and combos, and checks whether the progressions and changing hooks fix the repetition. Send tuning JSON.
+- Then session 6: pick 1 of 3 rewards after each wave.
+
 ## 2026-10-02 · Session 3: The beat is your health
 
 **Shipped**

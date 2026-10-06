@@ -4,7 +4,7 @@
  */
 
 import Phaser from 'phaser';
-import { DRUM_DEFS, DRUM_ORDER } from '../game/core';
+import { BASE_DRUMS, DRUM_DEFS, PERK_DRUMS } from '../game/core';
 import type { InstrumentId } from '../game/instruments';
 import { TOWER_DEFS, TOWER_TYPES, type TowerType } from '../game/towers';
 import { STEPS_PER_BAR, type Pattern } from '../music/patterns';
@@ -32,6 +32,7 @@ export class Panel {
   private cells = new Map<InstrumentId, Phaser.GameObjects.Rectangle[]>();
   private labels = new Map<InstrumentId, Phaser.GameObjects.Text>();
   private patterns = new Map<InstrumentId, Pattern>();
+  private colors = new Map<InstrumentId, number>();
   private rowStates = new Map<InstrumentId, RowState>();
   private playhead: Phaser.GameObjects.Rectangle;
   readonly trashRect: Phaser.Geom.Rectangle;
@@ -66,10 +67,11 @@ export class Panel {
     heading(trackY, 'TRACK');
     const cellW = 14;
     const gap = 2;
-    const left = x + 46;
-    const rowH = 17;
+    const left = x + 52;
+    const rowH = 14;
+    const drums = [...[...BASE_DRUMS].reverse(), ...PERK_DRUMS];
     const rows: { id: InstrumentId; name: string; color: number; pattern: Pattern }[] = [
-      ...[...DRUM_ORDER].reverse().map((d) => ({ id: d, name: DRUM_DEFS[d].name, color: DRUM_DEFS[d].color, pattern: DRUM_DEFS[d].pattern })),
+      ...drums.map((d) => ({ id: d, name: DRUM_DEFS[d].name, color: DRUM_DEFS[d].color, pattern: DRUM_DEFS[d].pattern })),
       ...TOWER_TYPES.map((ty) => ({ id: ty, name: TOWER_DEFS[ty].name, color: TOWER_DEFS[ty].color, pattern: TOWER_DEFS[ty].patterns.base })),
     ];
     this.playhead = scene.add
@@ -78,7 +80,7 @@ export class Panel {
       .setVisible(false);
     rows.forEach((row, r) => {
       // A small gap between the core's drums and the towers.
-      const y = trackY + 19 + r * rowH + (r >= DRUM_ORDER.length ? 5 : 0);
+      const y = trackY + 19 + r * rowH + (r >= drums.length ? 5 : 0);
       this.labels.set(
         row.id,
         text(x, y, row.name.toUpperCase(), { fontFamily: MONO, fontSize: '10px', color: COLORS.dim }),
@@ -89,13 +91,14 @@ export class Panel {
         const cx = left + s * (cellW + gap) + Math.floor(s / 4) * 3;
         cells.push(
           scene.add
-            .rectangle(cx + 1, y, cellW, rowH - 5, hit ? row.color : 0xffffff, hit ? 1 : 0.05)
+            .rectangle(cx + 1, y, cellW, rowH - 4, hit ? row.color : 0xffffff, hit ? 1 : 0.05)
             .setOrigin(0, 0)
             .setAlpha(hit ? STEP_ALPHA.off : 1),
         );
       }
       this.cells.set(row.id, cells);
       this.patterns.set(row.id, row.pattern);
+      this.colors.set(row.id, row.color);
     });
 
     // Bin.
@@ -109,7 +112,7 @@ export class Panel {
     }).setOrigin(0.5);
     this.drawTrash(false, false);
 
-    text(x, trashY + 58, ['Drag a tower to move it · right-click to remove', 'Space: pause · T: tuning · 1–4: pick tower'], {
+    text(x, trashY + 56, ['Click a tower to upgrade · drag to move', 'Right-click to remove · click the core for perks', 'Space: pause · T: tuning · 1–4: pick tower'], {
       fontFamily: FONT,
       fontSize: '12px',
       color: COLORS.muted,
@@ -150,11 +153,23 @@ export class Panel {
     this.playhead.setVisible(true).setX(first.x - 1);
   }
 
+  /** Show a different part on a row (an upgraded tower's pattern). */
+  setRowPattern(id: InstrumentId, pattern: Pattern): void {
+    if (this.patterns.get(id) === pattern) return;
+    this.patterns.set(id, pattern);
+    const color = this.colors.get(id)!;
+    const alpha = STEP_ALPHA[this.rowStates.get(id) ?? 'off'];
+    this.cells.get(id)!.forEach((cell, s) => {
+      const hit = pattern[s] !== null;
+      cell.setFillStyle(hit ? color : 0xffffff, hit ? 1 : 0.05).setAlpha(hit ? alpha : 1);
+    });
+  }
+
   setRowState(id: InstrumentId, state: RowState): void {
     if (this.rowStates.get(id) === state) return;
     this.rowStates.set(id, state);
     const label = this.labels.get(id)!;
-    const color = id in TOWER_DEFS ? TOWER_DEFS[id as TowerType].color : 0xffffff;
+    const color = this.colors.get(id) ?? 0xffffff;
     label.setColor(state === 'on' ? hex(color) : state === 'idle' ? COLORS.muted : COLORS.dim);
     const pattern = this.patterns.get(id)!;
     this.cells.get(id)!.forEach((cell, s) => {

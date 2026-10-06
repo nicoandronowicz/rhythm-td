@@ -126,9 +126,11 @@ Music ideas get game names and plain-language rules, so nobody needs theory to u
 
 | Combo | Setup | Effect |
 | --- | --- | --- |
-| Sidechain | Bass next to Chords | Both hit harder on the 16th right after each kick |
-| Call and response | Lead next to Arp | Lead gets a critical-hit chance on the backbeat |
-| Full band | Bass, Chords and Arp all touching | All three get more range |
+| Sidechain | Bass next to Chords | Both hit harder in the half beat right after each kick (×1.5), and both audibly pump with the kick |
+| Call and response | Lead next to Arp | Lead hits can be critical (30% chance, double damage). Built this way because the lead never plays on the backbeat; to confirm |
+| Full band | Bass, Chords and Arp touching (a chain counts) | All of them reach 20% further |
+
+Touching includes diagonals. Built in sessions 4+5; numbers are in the tuning panel.
 
 ### Economy and rewards
 

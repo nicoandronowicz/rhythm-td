@@ -10,7 +10,8 @@ import { dbToGain, noiseBuffer, Voice, type HitContext } from '../voice';
 const METAL_FREQS = [205.3, 304.4, 369.6, 522.7, 540, 800];
 
 export class HatsVoice extends Voice {
-  constructor() {
+  /** `decayOf` picks the length: closed hats by default; the open hat perk passes its own. */
+  constructor(private readonly decayOf: (t: Readonly<Tuning>) => number = (t) => t.hats.decay) {
     super();
   }
 
@@ -19,7 +20,8 @@ export class HatsVoice extends Voice {
     const h = t.hats;
     const jitter = t.velocity.hatJitter;
     const v = hit.velocity * (1 - jitter * Math.random());
-    const end = time + h.decay * 1.8 + 0.01;
+    const decay = this.decayOf(t);
+    const end = time + decay * 1.8 + 0.01;
 
     const sum = ctx.createGain();
 
@@ -56,7 +58,7 @@ export class HatsVoice extends Voice {
     const vca = ctx.createGain();
     vca.gain.setValueAtTime(0, time);
     vca.gain.linearRampToValueAtTime(v * 2.4, time + 0.0012);
-    vca.gain.setTargetAtTime(0, time + 0.0012, h.decay / 4.6);
+    vca.gain.setTargetAtTime(0, time + 0.0012, decay / 4.6);
 
     sum.connect(shape).connect(hp).connect(vca);
     this.into(vca, this.output);

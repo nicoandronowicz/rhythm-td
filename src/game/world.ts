@@ -16,7 +16,8 @@ import { stepAt, type HitKind, type Pattern } from '../music/patterns';
 import { chordInProgression, progressionForWave, type Chord } from '../music/theory';
 import { nextBarStart, stepToPosition } from '../music/timing';
 import { Board, type Tower } from './board';
-import { DRUM_DEFS, DRUM_ORDER, type DrumType } from './core';
+import { detectCombos, type ComboState } from './combos';
+import { BASE_DRUMS, DRUM_DEFS, DRUM_ORDER, PERK_DRUMS, type DrumType, type PerkDrum } from './core';
 import type { EnemyType } from './enemies';
 import { isCoreCell, type Cell } from './grid';
 import type { InstrumentId } from './instruments';
@@ -45,6 +46,9 @@ export interface TowerStats {
   slow: number;
   slowSteps: number;
   muffleShrink: number;
+  upgradeCost: number;
+  upgradeDamage: number;
+  upgradeRange: number;
 }
 
 export function towerStats(t: Readonly<Tuning>, type: TowerType): TowerStats {
@@ -88,6 +92,10 @@ export interface Attack {
   targets: number[];
   /** Where each target was when hit, in cell units. */
   points: Point[];
+  /** A Call & response critical hit. */
+  crit: boolean;
+  /** Boosted by Sidechain (right after a kick). */
+  sidechain: boolean;
 }
 
 export interface EnemyAttack {
@@ -126,6 +134,12 @@ export interface StepResult {
   enemies: EnemySnapshot[];
   waves: WaveStatus;
   harmony: Harmony;
+  combos: ComboState;
+  /** Tower layers that pump with the kick (Sidechain). */
+  pump: Set<TowerType>;
+  /** Which pattern each tower layer is playing. */
+  layerUpgraded: Record<TowerType, boolean>;
+  perksOwned: Set<PerkDrum>;
   gameOver: boolean;
 }
 
@@ -148,6 +162,11 @@ export class World {
   /** Leaks each drum can still take. A drum at 0 has dropped out. */
   readonly drums: Record<DrumType, number>;
   gameOver = false;
+  /** Perks bought (they may have dropped out since: check `drums`). */
+  readonly perksOwned = new Set<PerkDrum>();
+  /** Perks bought this bar, joining on the next one. */
+  readonly perksPending = new Set<PerkDrum>();
+  combos: ComboState = detectCombos([]);
   /** Waves fully survived (reached the next one). */
   wavesSurvived = 0;
   private nextEnemyId = 1;
@@ -157,12 +176,68 @@ export class World {
   private progression = 0;
   private progressionStartBar = 0;
 
-  constructor(board: Board, t: Readonly<Tuning>) {
+  constructor(
+    board: Board,
+    t: Readonly<Tuning>,
+    /** Random source for crits; tests pass a fixed one. */
+    private readonly rng: () => number = Math.random,
+  ) {
     this.board = board;
     this.path = new PathGeometry(board.layout);
     this.money = t.economy.startMoney;
     const hp = Math.max(1, Math.round(t.core.hpPerDrum));
-    this.drums = { hats: hp, clap: hp, kick: hp };
+    this.drums = { hats: hp, clap: hp, kick: hp, shaker: 0, rim: 0, openhat: 0 };
+  }
+
+  // ---------- upgrades and perks ----------
+
+  upgradeCost(tower: Tower, t: Readonly<Tuning>): number {
+    return towerStats(t, tower.type).upgradeCost;
+  }
+
+  /** Upgrade a tower: it switches to its upgraded pattern and stats on the next bar. */
+  upgrade(id: number, t: Readonly<Tuning>): { ok: true } | { ok: false; reason: 'money' | 'done' | 'wreck' } {
+    const tower = this.board.get(id);
+    if (!tower || this.gameOver) return { ok: false, reason: 'done' };
+    if (tower.state === 'wreck') return { ok: false, reason: 'wreck' };
+    if (tower.upgraded || tower.upgradeQueued) return { ok: false, reason: 'done' };
+    const cost = this.upgradeCost(tower, t);
+    if (this.money < cost) return { ok: false, reason: 'money' };
+    this.money -= cost;
+    tower.upgradeQueued = true;
+    return { ok: true };
+  }
+
+  perkCost(perk: PerkDrum, t: Readonly<Tuning>): number {
+    return t.core[`${perk}Cost`];
+  }
+
+  /** A perk is playing if bought and not knocked out. */
+  hasPerk(perk: PerkDrum): boolean {
+    return this.drums[perk] > 0;
+  }
+
+  /** Buy (or rebuy after it dropped out) a perk drum. It joins on the next bar with a full drum's health. */
+  buyPerk(perk: PerkDrum, t: Readonly<Tuning>): { ok: true } | { ok: false; reason: 'money' | 'playing' } {
+    if (this.gameOver || this.hasPerk(perk) || this.perksPending.has(perk)) return { ok: false, reason: 'playing' };
+    const cost = this.perkCost(perk, t);
+    if (this.money < cost) return { ok: false, reason: 'money' };
+    this.money -= cost;
+    this.perksPending.add(perk);
+    return { ok: true };
+  }
+
+  /** Leaks the core can still take, and its total when everything owned is healthy. */
+  coreHealth(t: Readonly<Tuning>): { left: number; total: number } {
+    const per = Math.max(1, Math.round(t.core.hpPerDrum));
+    const owned: DrumType[] = [...BASE_DRUMS, ...PERK_DRUMS.filter((p) => this.perksOwned.has(p))];
+    return { left: owned.reduce((n, d) => n + Math.max(0, this.drums[d]), 0), total: owned.length * per };
+  }
+
+  /** The pattern a tower plays and attacks on. */
+  towerPattern(tower: Tower): Pattern {
+    const p = TOWER_DEFS[tower.type].patterns;
+    return tower.upgraded ? p.upgraded : p.base;
   }
 
   towerCenter(c: Cell): Point {
@@ -208,13 +283,15 @@ export class World {
     return this.board.move(id, cell);
   }
 
-  /** Removes a tower and refunds part of its cost (nothing for a wreck). Returns the refund, or null if there was no tower. */
+  /** Removes a tower and refunds part of what was spent on it (nothing for a wreck). Returns the refund, or null if there was no tower. */
   remove(id: number, t: Readonly<Tuning>): number | null {
     const tower = this.board.remove(id);
     if (!tower) return null;
     this.playUntil.delete(id);
     if (tower.state === 'wreck') return 0;
-    const refund = Math.floor(towerStats(t, tower.type).cost * t.economy.refund);
+    const s = towerStats(t, tower.type);
+    const spent = s.cost + (tower.upgraded || tower.upgradeQueued ? s.upgradeCost : 0);
+    const refund = Math.floor(spent * t.economy.refund);
     this.money += refund;
     return refund;
   }
@@ -225,10 +302,12 @@ export class World {
     return e;
   }
 
-  /** Effective range: muffling shrinks it. */
+  /** Effective range: upgrades and Full band extend it, muffling shrinks it. */
   rangeOf(tower: Tower, t: Readonly<Tuning>): number {
     const s = towerStats(t, tower.type);
-    return s.range * (1 - Math.min(Math.max(s.muffleShrink, 0), 0.9) * tower.muffleLevel);
+    const base = s.range + (tower.upgraded ? s.upgradeRange : 0);
+    const band = this.combos.byTower.get(tower.id)?.has('fullBand') ? 1 + t.combos.fullBandRange : 1;
+    return base * band * (1 - Math.min(Math.max(s.muffleShrink, 0), 0.9) * tower.muffleLevel);
   }
 
   inRange(tower: Tower, range: number): Enemy[] {
@@ -275,12 +354,24 @@ export class World {
         enemies: [],
         waves: this.waves.status(step),
         harmony: this.harmonyAt(bar, this.waves.status(step).wave),
+        combos: this.combos,
+        pump: new Set(),
+        layerUpgraded: { bass: false, chords: false, arp: false, lead: false },
+        perksOwned: new Set(this.perksOwned),
         gameOver: true,
       };
     }
 
-    // 1. Towers go live on bar starts.
+    // 1. Towers, upgrades and perks join on bar starts.
     const barChange = this.board.onStep(step);
+    if (barChange) {
+      for (const p of this.perksPending) {
+        this.drums[p] = Math.max(1, Math.round(t.core.hpPerDrum));
+        this.perksOwned.add(p);
+      }
+      this.perksPending.clear();
+    }
+    this.combos = detectCombos(this.board.all());
 
     // 2. Spawns (and count survived waves when a new one starts).
     const waveBefore = this.waves.status(step).wave;
@@ -341,10 +432,14 @@ export class World {
     const layers = empty;
     const attacks: Attack[] = [];
     const idleOn = t.engage.idle > -60;
+    const layerUpgraded = { bass: false, chords: false, arp: false, lead: false };
+    const afterKick = this.drums.kick > 0 && (step % 4 === 1 || step % 4 === 2);
     for (const type of TOWER_TYPES) {
       const ofType = live.filter((tw) => tw.type === type);
       if (ofType.length === 0 || this.gameOver) continue;
       const playing = ofType.filter((tw) => playingTowers.has(tw.id));
+      // The layer plays the upgraded part if any tower it's sounding for is upgraded.
+      layerUpgraded[type] = (playing.length > 0 ? playing : ofType).some((tw) => tw.upgraded);
       const near = new Set<number>();
       for (const tw of playing) for (const e of targets.get(tw.id) ?? []) near.add(e.id);
       layers[type] = {
@@ -354,12 +449,12 @@ export class World {
         muffleLevel: Math.max(...ofType.map((tw) => tw.muffleLevel)),
       };
       if (layers[type].mode === 'none') continue;
-      const pattern = TOWER_DEFS[type].patterns.base;
+      const pattern = layerUpgraded[type] ? TOWER_DEFS[type].patterns.upgraded : TOWER_DEFS[type].patterns.base;
       const kind = stepAt(pattern, stepInBar);
-      if (!kind) continue;
-      hits.push({ instrument: type, kind, hitIndex: hitIndexAt(pattern, stepInBar) });
+      if (kind) hits.push({ instrument: type, kind, hitIndex: hitIndexAt(pattern, stepInBar) });
       for (const tower of playing) {
-        const attack = this.attack(tower, targets.get(tower.id) ?? [], t);
+        if (!stepAt(this.towerPattern(tower), stepInBar)) continue;
+        const attack = this.attack(tower, targets.get(tower.id) ?? [], t, afterKick);
         if (attack) attacks.push(attack);
       }
     }
@@ -394,6 +489,9 @@ export class World {
       slowed: e.slowLeft > 0,
     }));
 
+    const pump = new Set<TowerType>();
+    if (this.combos.active.has('sidechain')) for (const ty of ['bass', 'chords'] as const) pump.add(ty);
+
     return {
       step,
       entered: barChange?.entered ?? [],
@@ -409,6 +507,10 @@ export class World {
       enemies,
       waves,
       harmony: this.harmonyAt(bar, waves.wave),
+      combos: this.combos,
+      pump,
+      layerUpgraded,
+      perksOwned: new Set(this.perksOwned),
       gameOver: this.gameOver,
     };
   }
@@ -487,22 +589,37 @@ export class World {
     return e.slowLeft > 0 ? base * (1 - e.slowAmount) : base;
   }
 
-  private attack(tower: Tower, inRange: Enemy[], t: Readonly<Tuning>): Attack | null {
+  private attack(tower: Tower, inRange: Enemy[], t: Readonly<Tuning>, afterKick: boolean): Attack | null {
     const alive = inRange.filter((e) => e.hp > 0);
     if (alive.length === 0) return null;
     const stats = towerStats(t, tower.type);
+    const combos = this.combos.byTower.get(tower.id);
+    const sidechain = afterKick && !!combos?.has('sidechain');
+    const crit = !!combos?.has('callResponse') && tower.type === 'lead' && this.rng() < t.combos.callCrit;
+    const damage =
+      stats.damage *
+      (tower.upgraded ? stats.upgradeDamage : 1) *
+      (sidechain ? t.combos.sidechainBoost : 1) *
+      (crit ? t.combos.callCritDamage : 1);
     const hit =
       TOWER_DEFS[tower.type].target === 'area'
         ? alive
         : [alive.reduce((best, e) => (e.progress > best.progress ? e : best))];
     for (const e of hit) {
-      e.hp -= stats.damage;
+      e.hp -= damage;
       if (stats.stun > 0) e.stunLeft = Math.max(e.stunLeft, Math.round(stats.stun));
       if (stats.slow > 0 && stats.slowSteps > 0) {
         e.slowAmount = Math.max(e.slowLeft > 0 ? e.slowAmount : 0, Math.min(stats.slow, 0.9));
         e.slowLeft = Math.max(e.slowLeft, Math.round(stats.slowSteps));
       }
     }
-    return { towerId: tower.id, type: tower.type, targets: hit.map((e) => e.id), points: hit.map((e) => this.enemyPoint(e)) };
+    return {
+      towerId: tower.id,
+      type: tower.type,
+      targets: hit.map((e) => e.id),
+      points: hit.map((e) => this.enemyPoint(e)),
+      crit,
+      sidechain,
+    };
   }
 }

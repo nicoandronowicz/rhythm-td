@@ -25,6 +25,10 @@ export interface Tower {
   staticLevel: number;
   /** Muffling from Muffler attacks, 0..1. */
   muffleLevel: number;
+  /** Plays its upgraded pattern with better stats. */
+  upgraded: boolean;
+  /** Bought; becomes `upgraded` on the next bar. */
+  upgradeQueued: boolean;
 }
 
 export interface BarChange {
@@ -91,6 +95,8 @@ export class Board {
       maxHp: hp,
       staticLevel: 0,
       muffleLevel: 0,
+      upgraded: false,
+      upgradeQueued: false,
     };
     this.towers.set(tower.id, tower);
     return tower;
@@ -139,6 +145,10 @@ export class Board {
       if (t.state === 'queued') {
         t.state = 'live';
         entered.push(t);
+      }
+      if (t.upgradeQueued) {
+        t.upgradeQueued = false;
+        t.upgraded = true;
       }
     }
     const next = new Set<TowerType>();

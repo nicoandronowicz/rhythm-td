@@ -9,7 +9,8 @@
 import Phaser from 'phaser';
 import type { AudibleState, AudioEngine } from '../audio/engine';
 import { tuning } from '../config/tuningStore';
-import { DRUM_DEFS, type DrumType } from '../game/core';
+import { COMBO_DEFS, type ComboState } from '../game/combos';
+import { BASE_DRUMS, DRUM_DEFS, isPerk, PERK_DRUMS, type DrumType } from '../game/core';
 import { ENEMY_DEFS } from '../game/enemies';
 import { isCoreCell, type Cell } from '../game/grid';
 import { TOWER_DEFS, TOWER_TYPES, type TowerType } from '../game/towers';
@@ -17,6 +18,7 @@ import { towerStats, type World } from '../game/world';
 import { Hud } from './hud';
 import { COLORS, GRID, MONO, RENDER_SCALE, SCREEN } from './layout';
 import { Panel } from './panel';
+import { PerkMenu } from './perkMenu';
 import { drawShape } from './shapes';
 import { CoreView, Effects, EnemyView, TOWER_SIZE, TowerView, toScreen } from './views';
 
@@ -42,6 +44,10 @@ export class GameScene extends Phaser.Scene {
   private ghost!: Phaser.GameObjects.Container;
   private ghostShape!: Phaser.GameObjects.Graphics;
   private hoverLabel!: Phaser.GameObjects.Text;
+  private perkMenu!: PerkMenu;
+  private comboLines!: Phaser.GameObjects.Graphics;
+  private comboKey = '';
+  private hoverCore = false;
 
   private playing = false;
   /** Audio time the run ended; the screen comes up two bars later. */
@@ -69,6 +75,8 @@ export class GameScene extends Phaser.Scene {
     this.fx = new Effects(this);
 
     this.cursor = this.add.graphics().setDepth(7);
+    this.comboLines = this.add.graphics().setDepth(9);
+    this.perkMenu = new PerkMenu(this, this.core.bounds);
     this.ghostShape = this.add.graphics();
     this.ghost = this.add.container(0, 0, [this.ghostShape]).setDepth(20).setVisible(false);
     this.hoverLabel = this.add
@@ -87,7 +95,10 @@ export class GameScene extends Phaser.Scene {
 
     const kb = this.input.keyboard!;
     TOWER_TYPES.forEach((type) => kb.on(`keydown-${keyName(TOWER_DEFS[type].hotkey)}`, () => this.select(type)));
-    kb.on('keydown-ESC', () => this.select(null));
+    kb.on('keydown-ESC', () => {
+      this.select(null);
+      this.perkMenu.toggle(false);
+    });
     kb.on('keydown-SPACE', () => this.engine.togglePause());
     const removeHovered = () => {
       const t = this.hoverCell && this.world.board.towerAt(this.hoverCell);
@@ -107,7 +118,8 @@ export class GameScene extends Phaser.Scene {
       onAttack: (a) => {
         const view = this.towers.get(a.towerId);
         if (!view) return;
-        this.fx.attack(a.type, view.screen, a.points.map(toScreen), towerStats(tuning.current, a.type).range);
+        this.fx.attack(a.type, view.screen, a.points.map(toScreen), this.world.rangeOf(view.tower, tuning.current));
+        if (a.crit) for (const p of a.points) this.fx.crit(toScreen(p));
       },
       onKill: (k) => this.fx.kill(toScreen(k.point), k.bounty, ENEMY_DEFS[k.type].color),
       onLeak: () => this.core.hit(),
@@ -130,6 +142,16 @@ export class GameScene extends Phaser.Scene {
     }
     this.hud.setMoney(this.world.money);
     this.panel.refreshPalette(this.selected, this.world.money, (t) => towerStats(tuning.current, t).cost);
+    if (this.perkMenu.open) {
+      this.perkMenu.refresh(
+        PERK_DRUMS.map((perk) => ({
+          perk,
+          price: this.world.perkCost(perk, tuning.current),
+          status: this.world.perksPending.has(perk) ? 'pending' : this.world.hasPerk(perk) ? 'playing' : 'buy',
+          affordable: this.world.money >= this.world.perkCost(perk, tuning.current),
+        })),
+      );
+    }
 
     const a = this.engine.audible();
     if (a) {
@@ -168,16 +190,24 @@ export class GameScene extends Phaser.Scene {
     this.hud.setStep(pos.bar, pos.beat, pos.sixteenth, a.chord);
     this.hud.setWaves({ status: a.waves, step: a.step, stepSeconds: a.stepSeconds, remaining: a.waves.pending + a.enemies.length });
     const perDrum = Math.max(1, Math.round(tuning.current.core.hpPerDrum));
-    this.hud.setCore(a.drums.hats + a.drums.clap + a.drums.kick, perDrum * 3);
-    this.core.setHealth(a.drums, perDrum);
+    const owned = (d: DrumType) => !isPerk(d) || a.perksOwned.has(d);
+    const ownedDrums = [...BASE_DRUMS, ...PERK_DRUMS].filter(owned);
+    this.hud.setCore(
+      ownedDrums.reduce((n, d) => n + Math.max(0, a.drums[d]), 0),
+      ownedDrums.length * perDrum,
+    );
+    this.core.setHealth(a.drums, perDrum, owned);
+    this.drawCombos(a.combos);
     this.core.setResting(a.core === 'resting');
     this.panel.setStep(pos.stepInBar);
 
-    for (const d of ['kick', 'clap', 'hats'] as const) {
+    for (const d of [...BASE_DRUMS, ...PERK_DRUMS]) {
       this.panel.setRowState(d, a.drums[d] <= 0 ? 'off' : a.core === 'resting' ? 'idle' : 'on');
     }
     for (const type of TOWER_TYPES) {
       const mode = a.layers[type].mode;
+      const p = TOWER_DEFS[type].patterns;
+      this.panel.setRowPattern(type, a.layerUpgraded[type] ? p.upgraded : p.base);
       this.panel.setRowState(type, mode === 'fighting' ? 'on' : mode === 'idle' ? 'idle' : 'off');
     }
     for (const v of this.towers.values()) v.setPlaying(a.playingTowers.has(v.tower.id));
@@ -186,6 +216,34 @@ export class GameScene extends Phaser.Scene {
       const downbeat = pos.beat === 0;
       this.tweens.add({ targets: this.pathGlow, alpha: { from: downbeat ? 0.7 : 0.45, to: 0.22 }, duration: 380, ease: 'Quad.easeOut' });
       for (const v of this.towers.values()) v.blink();
+    }
+  }
+
+  /** Lines between towers that make a combo, plus a shout when a new one forms. */
+  private drawCombos(c: ComboState): void {
+    const at = (id: number) => {
+      const t = this.world.board.get(id);
+      return t ? `${t.col},${t.row}` : '';
+    };
+    // Positions are part of the key so moved towers redraw their links.
+    const key = c.links.map((l) => `${l.combo}:${l.a}-${l.b}@${at(l.a)}/${at(l.b)}`).sort().join('|');
+    if (key === this.comboKey) return;
+    const before = new Set(this.comboKey.split('|').map((k) => k.split('@')[0]));
+    this.comboKey = key;
+    const g = this.comboLines;
+    g.clear();
+    for (const l of c.links) {
+      const a = this.towers.get(l.a);
+      const b = this.towers.get(l.b);
+      if (!a || !b) continue;
+      const color = COMBO_DEFS[l.combo].color;
+      g.lineStyle(3, color, 0.55);
+      g.lineBetween(a.screen.x, a.screen.y, b.screen.x, b.screen.y);
+      const linkKey = `${l.combo}:${l.a}-${l.b}`;
+      if (!before.has(linkKey)) {
+        const mid = { x: (a.screen.x + b.screen.x) / 2, y: (a.screen.y + b.screen.y) / 2 };
+        this.fx.say(mid, `${COMBO_DEFS[l.combo].name}!`, `#${color.toString(16).padStart(6, '0')}`);
+      }
     }
   }
 
@@ -262,6 +320,17 @@ export class GameScene extends Phaser.Scene {
     view.remove();
   }
 
+  private upgradeTower(view: TowerView): void {
+    const r = this.world.upgrade(view.tower.id, tuning.current);
+    if (r.ok) {
+      view.sync();
+      this.fx.say(view.screen, 'Upgrading · next bar', '#5dffa8');
+    } else if (r.reason === 'money') {
+      this.fx.say(view.screen, 'Not enough money');
+    }
+    this.refreshCursor();
+  }
+
   private repairTower(view: TowerView): void {
     const r = this.world.repair(view.tower.id, tuning.current);
     if (r.ok) {
@@ -282,6 +351,20 @@ export class GameScene extends Phaser.Scene {
   private onDown(p: Phaser.Input.Pointer): void {
     const x = p.worldX;
     const y = p.worldY;
+    if (this.perkMenu.open) {
+      const perk = this.perkMenu.perkAt(x, y);
+      if (perk) {
+        const r = this.world.buyPerk(perk, tuning.current);
+        if (!r.ok && r.reason === 'money') this.fx.say({ x, y }, 'Not enough money');
+        return;
+      }
+      if (this.perkMenu.bounds.contains(x, y)) return;
+      this.perkMenu.toggle(false);
+      if (this.core.bounds.contains(x, y)) return;
+    } else if (this.core.bounds.contains(x, y)) {
+      this.perkMenu.toggle(true);
+      return;
+    }
     const button = this.panel.buttonAt(x, y);
     if (button) {
       this.select(button);
@@ -308,6 +391,7 @@ export class GameScene extends Phaser.Scene {
     const x = p.worldX;
     const y = p.worldY;
     this.hoverCell = this.cellAt(x, y);
+    this.hoverCore = this.core.bounds.contains(x, y);
     const d = this.drag;
     if (d) {
       if (!d.moved && Math.hypot(x - d.x0, y - d.y0) > DRAG_THRESHOLD) {
@@ -335,6 +419,7 @@ export class GameScene extends Phaser.Scene {
       if (d?.kind === 'move') {
         d.view.container.setAlpha(1);
         if (d.view.isWreck) this.repairTower(d.view);
+        else this.upgradeTower(d.view);
       }
       this.refreshCursor();
       return;
@@ -358,6 +443,10 @@ export class GameScene extends Phaser.Scene {
     const g = this.cursor;
     g.clear();
     this.hoverLabel.setVisible(false);
+    if (this.hoverCore && !this.drag && !this.perkMenu.open) {
+      this.hoverLabel.setText('Click for core perks').setPosition(this.core.center.x, this.core.bounds.y - 4).setVisible(true);
+      return;
+    }
     const cell = this.hoverCell;
     if (!cell) return;
     const d = this.drag;
@@ -367,9 +456,19 @@ export class GameScene extends Phaser.Scene {
       this.strokeCell(g, cell, 0xffffff, 0.35);
       if (occupant.state === 'wreck') {
         const cost = this.world.repairCost(occupant, tuning.current);
-        this.hoverLabel.setText(`Click to repair · $${cost}`).setPosition(center.x, center.y - 32).setVisible(true);
+        this.hoverLabel.setText(`Click to repair · $${cost}`).setPosition(center.x, center.y - 22).setVisible(true);
         return;
       }
+      const combos = [...(this.world.combos.byTower.get(occupant.id) ?? [])].map((c) => COMBO_DEFS[c].name);
+      const up = occupant.upgraded
+        ? 'Upgraded'
+        : occupant.upgradeQueued
+          ? 'Upgrading next bar'
+          : `Click to upgrade · $${this.world.upgradeCost(occupant, tuning.current)}`;
+      this.hoverLabel
+        .setText(combos.length ? `${up}\n${combos.join(' · ')}` : up)
+        .setPosition(center.x, center.y - 22)
+        .setVisible(!d);
       g.fillStyle(TOWER_DEFS[occupant.type].color, 0.06);
       const r = this.world.rangeOf(occupant, tuning.current) * GRID.cell;
       g.fillCircle(center.x, center.y, r);
