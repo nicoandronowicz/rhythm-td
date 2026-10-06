@@ -67,6 +67,12 @@ export interface WaveStatus {
   wave: number;
   /** Step the next wave starts. */
   nextWaveStep: number;
+  /** Step the current wave started (0 before the first). */
+  waveStartStep: number;
+  /** Enemies in the current wave. */
+  size: number;
+  /** Enemies of the current wave not spawned yet. */
+  pending: number;
 }
 
 /** Keeps track of which wave is on and hands out spawns as their steps come up. */
@@ -98,7 +104,14 @@ export class WaveClock {
 
   status(step: number): WaveStatus {
     const next = this.nextStart ?? 0;
-    if (!this.current) return { phase: 'intro', wave: 0, nextWaveStep: next };
-    return { phase: step < this.current.endStep ? 'wave' : 'breakdown', wave: this.current.number, nextWaveStep: next };
+    if (!this.current) return { phase: 'intro', wave: 0, nextWaveStep: next, waveStartStep: 0, size: 0, pending: 0 };
+    return {
+      phase: step < this.current.endStep ? 'wave' : 'breakdown',
+      wave: this.current.number,
+      nextWaveStep: next,
+      waveStartStep: this.current.startStep,
+      size: this.current.spawns.length,
+      pending: this.pending.length,
+    };
   }
 }

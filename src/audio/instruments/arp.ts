@@ -5,7 +5,7 @@
 
 import * as Tone from 'tone';
 import type { Tuning } from '../../config/tuning';
-import { arpNote, midiToFreq } from '../../music/theory';
+import { arpNote, arpStyleForWave, midiToFreq } from '../../music/theory';
 import { Voice, type HitContext } from '../voice';
 
 export class ArpVoice extends Voice {
@@ -19,7 +19,7 @@ export class ArpVoice extends Voice {
   trigger(time: number, hit: HitContext, t: Readonly<Tuning>): void {
     const ctx = this.ctx();
     const a = t.arp;
-    const f = midiToFreq(arpNote(hit.bar, hit.hitIndex));
+    const f = midiToFreq(arpNote(hit.chord, hit.hitIndex, arpStyleForWave(hit.wave)));
     const v = hit.velocity;
     const end = time + a.decay * 2.5 + 0.03;
 

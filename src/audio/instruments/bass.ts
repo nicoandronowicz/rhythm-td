@@ -32,7 +32,7 @@ export class BassVoice extends Voice {
     const ctx = this.ctx();
     const b = t.bass;
     const v = hit.velocity;
-    const notes = bassLayerNotes(hit.bar, hit.kind === 'octave');
+    const notes = bassLayerNotes(hit.chord, hit.kind === 'octave');
     const subFreq = midiToFreq(notes.sub);
     const midFreq = midiToFreq(notes.mid);
     const dur = b.length * hit.sixteenth;

@@ -24,9 +24,9 @@ function setup(t: Tuning) {
   return { world, run, results, now: () => step };
 }
 
-/** A buildable cell right next to the first stretch of path (row 2, cols 0-3). */
-const NEAR_START: Cell = { col: 1, row: 1 };
-const FAR: Cell = { col: 0, row: 9 };
+/** A buildable cell right next to the first stretch of path (row 1, cols 0-4). */
+const NEAR_START: Cell = { col: 1, row: 2 };
+const FAR: Cell = { col: 21, row: 0 };
 
 describe('drum core', () => {
   it('always plays kick, clap and hats on their steps, with no towers and no enemies', () => {
@@ -63,9 +63,9 @@ describe('economy', () => {
   it('cannot build on the core or the path', () => {
     const t = quiet();
     const { world } = setup(t);
-    expect(world.place('bass', { col: 13, row: 6 }, t)).toEqual({ ok: false, reason: 'blocked' });
-    expect(world.place('bass', { col: 14, row: 8 }, t)).toEqual({ ok: false, reason: 'blocked' });
-    expect(world.place('bass', { col: 0, row: 2 }, t)).toEqual({ ok: false, reason: 'blocked' });
+    expect(world.place('bass', { col: 19, row: 5 }, t)).toEqual({ ok: false, reason: 'blocked' });
+    expect(world.place('bass', { col: 21, row: 8 }, t)).toEqual({ ok: false, reason: 'blocked' });
+    expect(world.place('bass', { col: 0, row: 1 }, t)).toEqual({ ok: false, reason: 'blocked' });
   });
 
   it('a kill pays the bounty', () => {
@@ -207,7 +207,7 @@ describe('towers play only while fighting', () => {
     const t = quiet();
     const { world, run, results } = setup(t);
     world.place('arp', NEAR_START, t);
-    world.place('arp', { col: 2, row: 1 }, t);
+    world.place('arp', { col: 2, row: 2 }, t);
     run(17);
     world.addEnemy('static', 999, 2);
     run(2);
@@ -233,7 +233,7 @@ describe('attacks', () => {
     const t = quiet();
     const { world, run, results } = setup(t);
     world.place('lead', NEAR_START, t);
-    world.place('chords', { col: 2, row: 1 }, t);
+    world.place('chords', { col: 2, row: 2 }, t);
     run(16);
     const a = world.addEnemy('static', 9999, 2.2);
     const b = world.addEnemy('static', 9999, 2.8);
@@ -448,6 +448,38 @@ describe('the core', () => {
     const { world, run } = setup(t);
     world.addEnemy('static', 999, 1).stunLeft = 999;
     expect(run(1).core).toBe('active');
+  });
+});
+
+describe('harmony', () => {
+  it('the intro plays the first progression; each wave switches to its own from its first bar', () => {
+    const t = JSON.parse(JSON.stringify(DEFAULT_TUNING)) as Tuning;
+    t.waves.firstDelayBars = 3;
+    t.waves.lengthBars = 4;
+    t.waves.breakdownBars = 0;
+    const { run, results } = setup(t);
+    run(16 * 12);
+    const at = (bar: number) => results[bar * 16]!.harmony;
+    expect(at(0).chord.name).toBe('Am7');
+    expect(at(2).chord.name).toBe('Fmaj7');
+    // Wave 1 plays the first progression again, from its first chord.
+    expect(at(3)).toMatchObject({ progression: 0, phraseBar: 0, wave: 1 });
+    expect(at(3).chord.name).toBe('Am7');
+    expect(at(5).chord.name).toBe('Fmaj7');
+    // Wave 2 switches to the second progression.
+    expect(at(7)).toMatchObject({ progression: 1, phraseBar: 0, wave: 2 });
+    expect(at(9).chord.name).toBe('Dm7');
+    expect(at(11)).toMatchObject({ progression: 2, phraseBar: 0, wave: 3 });
+    expect(at(11).chord.name).toBe('Fmaj7');
+  });
+
+  it('harmony only changes on bar starts', () => {
+    const t = JSON.parse(JSON.stringify(DEFAULT_TUNING)) as Tuning;
+    const { run, results } = setup(t);
+    run(16 * 30);
+    for (let i = 1; i < results.length; i++) {
+      if (results[i]!.step % 16 !== 0) expect(results[i]!.harmony.chord).toBe(results[i - 1]!.harmony.chord);
+    }
   });
 });
 

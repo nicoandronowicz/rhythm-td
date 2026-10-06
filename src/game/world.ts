@@ -13,6 +13,7 @@
 
 import type { Tuning } from '../config/tuning';
 import { stepAt, type HitKind, type Pattern } from '../music/patterns';
+import { chordInProgression, progressionForWave, type Chord } from '../music/theory';
 import { nextBarStart, stepToPosition } from '../music/timing';
 import { Board, type Tower } from './board';
 import { DRUM_DEFS, DRUM_ORDER, type DrumType } from './core';
@@ -70,6 +71,14 @@ export interface LayerSound {
   muffleLevel: number;
 }
 
+/** What the band is playing over: the chord, where we are in the 8-bar phrase, and which wave (for hook and arp shapes). */
+export interface Harmony {
+  chord: Chord;
+  phraseBar: number;
+  progression: number;
+  wave: number;
+}
+
 /** The core's mood: resting between waves, rising in the bar before one, active otherwise. */
 export type CoreMode = 'resting' | 'rising' | 'active';
 
@@ -116,6 +125,7 @@ export interface StepResult {
   drums: Record<DrumType, number>;
   enemies: EnemySnapshot[];
   waves: WaveStatus;
+  harmony: Harmony;
   gameOver: boolean;
 }
 
@@ -143,6 +153,9 @@ export class World {
   private nextEnemyId = 1;
   /** Step (exclusive) each tower keeps playing until. */
   private playUntil = new Map<number, number>();
+  /** Each wave plays its own progression from its first bar; the intro plays the first one. */
+  private progression = 0;
+  private progressionStartBar = 0;
 
   constructor(board: Board, t: Readonly<Tuning>) {
     this.board = board;
@@ -232,8 +245,18 @@ export class World {
     return DRUM_ORDER.filter((d) => this.drums[d] > 0);
   }
 
+  harmonyAt(bar: number, wave: number): Harmony {
+    const phraseBar = bar - this.progressionStartBar;
+    return {
+      chord: chordInProgression(this.progression, phraseBar),
+      phraseBar: ((phraseBar % 8) + 8) % 8,
+      progression: this.progression,
+      wave,
+    };
+  }
+
   onStep(step: number, t: Readonly<Tuning>): StepResult {
-    const { stepInBar } = stepToPosition(step);
+    const { stepInBar, bar } = stepToPosition(step);
     const empty = this.emptyLayers();
 
     if (this.gameOver) {
@@ -251,6 +274,7 @@ export class World {
         drums: { ...this.drums },
         enemies: [],
         waves: this.waves.status(step),
+        harmony: this.harmonyAt(bar, this.waves.status(step).wave),
         gameOver: true,
       };
     }
@@ -262,7 +286,11 @@ export class World {
     const waveBefore = this.waves.status(step).wave;
     for (const s of this.waves.onStep(step, t)) this.addEnemy(s.type, s.hp);
     const waveNow = this.waves.status(step).wave;
-    if (waveNow > waveBefore && waveBefore > 0) this.wavesSurvived = waveBefore;
+    if (waveNow > waveBefore) {
+      if (waveBefore > 0) this.wavesSurvived = waveBefore;
+      this.progression = progressionForWave(waveNow);
+      this.progressionStartBar = bar;
+    }
 
     // 3. Enemies attack or move.
     const enemyAttacks: EnemyAttack[] = [];
@@ -380,6 +408,7 @@ export class World {
       drums: { ...this.drums },
       enemies,
       waves,
+      harmony: this.harmonyAt(bar, waves.wave),
       gameOver: this.gameOver,
     };
   }

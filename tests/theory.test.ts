@@ -1,116 +1,155 @@
 import { describe, expect, it } from 'vitest';
 import {
-  bassNote,
-  bassRootAtBar,
-  chordAtBar,
-  isInMelodyScale,
+  ARP_STYLES,
+  arpNote,
+  arpStyleForWave,
+  BASS_RANGE,
+  bassLayerNotes,
+  bassRoot,
+  chordInProgression,
+  chordVoicing,
+  CHORDS,
+  isInKey,
+  isSafeLeadNote,
   kickNote,
-  melodyNotesInRange,
+  LEAD_MOTIFS,
+  leadMotifForWave,
+  leadNote,
   midiToFreq,
   midiToName,
-  PROTOTYPE_SPEC,
+  percNote,
+  progressionBars,
+  progressionForWave,
+  PROGRESSIONS,
+  type Chord,
 } from '../src/music/theory';
 
-describe('music theory', () => {
+const pcName = (m: number) => midiToName(m).replace(/-?\d+$/, '');
+const ALL_CHORDS: Chord[] = Object.values(CHORDS);
+
+describe('basics', () => {
   it('converts MIDI to frequency and name', () => {
     expect(midiToFreq(69)).toBeCloseTo(440);
     expect(midiToFreq(33)).toBeCloseTo(55);
     expect(midiToName(33)).toBe('A1');
-    expect(midiToName(29)).toBe('F1');
     expect(midiToName(60)).toBe('C4');
   });
 
-  it('alternates Am7 and Fmaj7 every 2 bars', () => {
-    const names = [0, 1, 2, 3, 4, 5, 6, 7].map((b) => chordAtBar(b).name);
-    expect(names).toEqual(['Am7', 'Am7', 'Fmaj7', 'Fmaj7', 'Am7', 'Am7', 'Fmaj7', 'Fmaj7']);
-  });
-
-  it('a 16-bar wave is 4 full cycles of the vamp', () => {
-    expect(chordAtBar(15).name).toBe('Fmaj7');
-    expect(chordAtBar(16).name).toBe('Am7');
-  });
-
-  it('handles negative bars without crashing', () => {
-    expect(chordAtBar(-1).name).toBe('Fmaj7');
-  });
-
-  it('chord tones match the spec', () => {
-    expect(chordAtBar(0).tones).toEqual(['A', 'C', 'E', 'G']);
-    expect(chordAtBar(2).tones).toEqual(['F', 'A', 'C', 'E']);
-  });
-
-  it('bass root follows the chord and stays in range', () => {
-    expect(midiToName(bassRootAtBar(0))).toBe('A1');
-    expect(midiToName(bassRootAtBar(2))).toBe('F1');
-    for (let bar = 0; bar < 16; bar++) {
-      const n = bassRootAtBar(bar);
-      expect(n).toBeGreaterThanOrEqual(PROTOTYPE_SPEC.bassRange[0]);
-      expect(n).toBeLessThanOrEqual(PROTOTYPE_SPEC.bassRange[1]);
-    }
-  });
-
-  it('bass octave note is the root an octave up', () => {
-    expect(bassNote(0, true)).toBe(bassNote(0, false) + 12);
-  });
-
-  it('kick is tuned to A', () => {
+  it('kick and perc are tuned in key', () => {
     expect(midiToName(kickNote())).toBe('A1');
-  });
-
-  it('melody notes are only A C D E G', () => {
-    const notes = melodyNotesInRange(57, 81).map((m) => midiToName(m).replace(/\d+$/, ''));
-    expect(new Set(notes)).toEqual(new Set(['A', 'C', 'D', 'E', 'G']));
-    expect(isInMelodyScale(58)).toBe(false); // A#
-    expect(isInMelodyScale(69)).toBe(true); // A
+    expect(isInKey(percNote())).toBe(true);
   });
 });
 
-describe('bass layers', () => {
-  it('mid layer sits an octave above the sub, both on the chord root', async () => {
-    const { bassLayerNotes } = await import('../src/music/theory');
-    const am = bassLayerNotes(0, false);
-    expect(midiToName(am.sub)).toBe('A1');
-    expect(midiToName(am.mid)).toBe('A2');
-    const f = bassLayerNotes(2, false);
-    expect(midiToName(f.sub)).toBe('F1');
-    expect(midiToName(f.mid)).toBe('F2');
-    expect(bassLayerNotes(0, true).sub).toBe(am.sub + 12);
+describe('progressions', () => {
+  it('are the five curated 8-bar progressions, every chord in A minor', () => {
+    expect(PROGRESSIONS.map((p) => p.chords.map((c) => c.name).join('-'))).toEqual([
+      'Am7-Fmaj7-Cmaj7-G',
+      'Am7-Dm7-Fmaj7-Em7',
+      'Fmaj7-G-Am7-Am7',
+      'Am7-Em7-Fmaj7-G',
+      'Dm7-Am7-Fmaj7-G',
+    ]);
+    for (let p = 0; p < PROGRESSIONS.length; p++) expect(progressionBars(p)).toBe(8);
+    for (const c of ALL_CHORDS) for (const pc of c.tones) expect(['A', 'B', 'C', 'D', 'E', 'F', 'G']).toContain(pc);
+  });
+
+  it('two bars per chord, wrapping after 8', () => {
+    const names = [0, 1, 2, 3, 4, 5, 6, 7, 8].map((b) => chordInProgression(0, b).name);
+    expect(names).toEqual(['Am7', 'Am7', 'Fmaj7', 'Fmaj7', 'Cmaj7', 'Cmaj7', 'G', 'G', 'Am7']);
+    expect(chordInProgression(1, -1).name).toBe('Em7');
+  });
+
+  it('each wave gets the next progression, cycling; the intro uses the first', () => {
+    expect([0, 1, 2, 3, 4, 5, 6].map(progressionForWave)).toEqual([0, 0, 1, 2, 3, 4, 0]);
   });
 });
 
-describe('melodic towers', () => {
-  it('chord stabs use only chord tones, ascending, in a tight voicing', async () => {
-    const { chordVoicing } = await import('../src/music/theory');
-    expect(chordVoicing(0).map(midiToName)).toEqual(['A3', 'C4', 'E4', 'G4']);
-    expect(chordVoicing(2).map(midiToName)).toEqual(['F3', 'A3', 'C4', 'E4']);
-    for (let bar = 0; bar < 8; bar++) {
-      const v = chordVoicing(bar);
-      const pcs = chordAtBar(bar).tones;
-      for (let i = 0; i < v.length; i++) {
-        expect(pcs).toContain(midiToName(v[i]!).replace(/-?\d+$/, ''));
-        if (i > 0) expect(v[i]!).toBeGreaterThan(v[i - 1]!);
-      }
+describe('bass', () => {
+  it('root of every chord, inside the bass range; mid layer an octave up', () => {
+    for (const c of ALL_CHORDS) {
+      const r = bassRoot(c);
+      expect(pcName(r)).toBe(c.tones[0]);
+      expect(r).toBeGreaterThanOrEqual(BASS_RANGE[0]);
+      expect(r).toBeLessThanOrEqual(BASS_RANGE[1]);
+      expect(bassLayerNotes(c, false).mid).toBe(r + 12);
+      expect(bassLayerNotes(c, true).sub).toBe(r + 12);
+    }
+    expect(midiToName(bassRoot(CHORDS.Am7))).toBe('A1');
+    expect(midiToName(bassRoot(CHORDS.Fmaj7))).toBe('F1');
+  });
+});
+
+describe('chord stabs', () => {
+  it('root position, chord tones only, root between E3 and D#4', () => {
+    expect(chordVoicing(CHORDS.Am7).map(midiToName)).toEqual(['A3', 'C4', 'E4', 'G4']);
+    expect(chordVoicing(CHORDS.Fmaj7).map(midiToName)).toEqual(['F3', 'A3', 'C4', 'E4']);
+    expect(chordVoicing(CHORDS.G).map(midiToName)).toEqual(['G3', 'B3', 'D4']);
+    for (const c of ALL_CHORDS) {
+      const v = chordVoicing(c);
+      expect(v.map(pcName)).toEqual([...c.tones]);
+      expect(v[0]!).toBeGreaterThanOrEqual(52);
+      expect(v[0]!).toBeLessThanOrEqual(63);
       expect(v[v.length - 1]! - v[0]!).toBeLessThan(13);
     }
   });
+});
 
-  it('arp climbs the chord tones over two octaves and wraps', async () => {
-    const { arpNote } = await import('../src/music/theory');
-    const am = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => midiToName(arpNote(0, i)));
-    expect(am).toEqual(['A4', 'C5', 'E5', 'G5', 'A5', 'C6', 'E6', 'G6']);
-    expect(arpNote(0, 8)).toBe(arpNote(0, 0));
-    expect(midiToName(arpNote(2, 0))).toBe('F4');
-    for (let i = 0; i < 16; i++) {
-      const pc = midiToName(arpNote(2, i)).replace(/-?\d+$/, '');
-      expect(chordAtBar(2).tones).toContain(pc);
+describe('arp', () => {
+  it('climbs the chord over two octaves in "up"', () => {
+    const am = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => midiToName(arpNote(CHORDS.Am7, i, 'up')));
+    expect(am).toEqual(['E4', 'G4', 'A4', 'C5', 'E5', 'G5', 'A5', 'C6']);
+    expect(arpNote(CHORDS.Am7, 8, 'up')).toBe(arpNote(CHORDS.Am7, 0, 'up'));
+  });
+
+  it('down goes down, updown turns around without repeating the ends', () => {
+    expect(arpNote(CHORDS.Am7, 0, 'down')).toBeGreaterThan(arpNote(CHORDS.Am7, 1, 'down'));
+    const ud = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => arpNote(CHORDS.Am7, i, 'updown'));
+    expect(ud[7]).toBeGreaterThan(ud[8]!);
+    for (let i = 1; i < ud.length; i++) expect(ud[i]).not.toBe(ud[i - 1]);
+  });
+
+  it('every style plays only chord tones, for every chord', () => {
+    for (const style of ARP_STYLES) {
+      for (const c of ALL_CHORDS) {
+        for (let i = 0; i < 32; i++) expect(c.tones).toContain(pcName(arpNote(c, i, style)));
+      }
     }
   });
 
-  it('lead hook only uses the pentatonic scale, on every bar and hit', async () => {
-    const { leadNote } = await import('../src/music/theory');
-    for (let bar = 0; bar < 8; bar++) {
-      for (let hit = 0; hit < 6; hit++) expect(isInMelodyScale(leadNote(bar, hit))).toBe(true);
+  it('style changes from wave to wave', () => {
+    expect(new Set([1, 2, 3, 4].map(arpStyleForWave)).size).toBe(4);
+  });
+});
+
+describe('lead', () => {
+  it('never plays a note that rubs against the chord, for every motif, chord, bar and hit', () => {
+    for (let m = 0; m < LEAD_MOTIFS.length; m++) {
+      for (const c of ALL_CHORDS) {
+        for (let bar = 0; bar < 8; bar++) {
+          for (let hit = 0; hit < 6; hit++) {
+            const n = leadNote(c, bar, hit, m);
+            expect(isSafeLeadNote(n, c)).toBe(true);
+            expect(n).toBeGreaterThanOrEqual(64);
+            expect(n).toBeLessThanOrEqual(81);
+          }
+        }
+      }
     }
-    expect(midiToName(leadNote(0, 0))).toBe('E5');
+  });
+
+  it('safe notes: chord tones yes, a half step off a chord tone no', () => {
+    expect(isSafeLeadNote(72, CHORDS.Am7)).toBe(true); // C over Am7
+    expect(isSafeLeadNote(74, CHORDS.Am7)).toBe(true); // D, a whole step from C and E
+    expect(isSafeLeadNote(72, CHORDS.G)).toBe(false); // C rubs on B
+    expect(isSafeLeadNote(76, CHORDS.Dm7)).toBe(false); // E rubs on F
+    expect(isSafeLeadNote(70, CHORDS.Am7)).toBe(false); // Bb isn't in the scale
+  });
+
+  it('each wave gets a different hook shape', () => {
+    expect(new Set([1, 2, 3, 4, 5].map(leadMotifForWave)).size).toBe(5);
+    const a = [0, 1, 2].map((h) => leadNote(CHORDS.Am7, 0, h, 0));
+    const b = [0, 1, 2].map((h) => leadNote(CHORDS.Am7, 0, h, 1));
+    expect(a).not.toEqual(b);
   });
 });

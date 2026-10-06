@@ -5,7 +5,7 @@ export const SCREEN = { width: 1280, height: 720 };
 /** Internal render scale so shapes and text stay sharp on retina screens. */
 export const RENDER_SCALE = 2;
 
-export const GRID = { x: 24, y: 96, cell: 60 };
+export const GRID = { x: 24, y: 104, cell: 40 };
 
 export const PANEL = { x: 948, width: 308 };
 

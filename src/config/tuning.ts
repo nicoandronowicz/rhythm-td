@@ -130,11 +130,13 @@ export const DEFAULT_TUNING = {
     /** After the last enemy leaves, keep playing to the end of this many bars (1 = end of the current bar). */
     holdBars: 1,
     /** Volume of towers with nobody in range ("in the distance"), dB. -60 = silent. */
-    idle: -15,
+    idle: -9,
     /** Low-pass on idle towers, Hz. */
-    idleCutoff: 700,
+    idleCutoff: 1500,
+    /** How long a tower takes to open up when it starts fighting, beats. */
+    openBeats: 1,
     /** How long a tower takes to settle back to idle, beats. */
-    closeBeats: 1,
+    closeBeats: 2,
     /** Low-pass on a tower fighting one enemy, Hz. Opens fully as more enemies come. */
     calmCutoff: 4500,
     /** Enemies in range for full brightness and punch. */
@@ -186,7 +188,7 @@ export const DEFAULT_TUNING = {
   static: {
     hp: 30,
     /** Cells per beat. */
-    speed: 0.75,
+    speed: 1.0,
     bounty: 6,
     /** Core damage when it gets through. */
     leak: 1,
@@ -201,7 +203,7 @@ export const DEFAULT_TUNING = {
   },
   muffler: {
     hp: 55,
-    speed: 0.55,
+    speed: 0.75,
     bounty: 9,
     leak: 1,
     reach: 1.4,
@@ -312,6 +314,7 @@ export const TUNING_FIELDS: readonly TuningField[] = [
   { path: 'engage.holdBars', label: 'Hold (bars)', min: 1, max: 4, step: 1, group: 'Towers play' },
   { path: 'engage.idle', label: 'Idle volume', min: -60, max: 0, step: 1, unit: 'dB', group: 'Towers play' },
   { path: 'engage.idleCutoff', label: 'Idle filter', min: 150, max: 20000, step: 50, unit: 'Hz', group: 'Towers play' },
+  { path: 'engage.openBeats', label: 'Fade in', min: 0, max: 4, step: 0.25, unit: 'beats', group: 'Towers play' },
   { path: 'engage.closeBeats', label: 'Settle time', min: 0.25, max: 8, step: 0.25, unit: 'beats', group: 'Towers play' },
   { path: 'engage.calmCutoff', label: 'Filter, 1 enemy', min: 500, max: 20000, step: 50, unit: 'Hz', group: 'Towers play' },
   { path: 'engage.fullIntensity', label: 'Full open at', min: 1, max: 12, step: 1, unit: 'enemies', group: 'Towers play' },

@@ -166,8 +166,7 @@ export class GameScene extends Phaser.Scene {
   private onAudibleStep(a: AudibleState): void {
     const { pos } = a;
     this.hud.setStep(pos.bar, pos.beat, pos.sixteenth, a.chord);
-    this.hud.setWaves(a.waves, a.step);
-    this.hud.setEnemies(a.enemies.length);
+    this.hud.setWaves({ status: a.waves, step: a.step, stepSeconds: a.stepSeconds, remaining: a.waves.pending + a.enemies.length });
     const perDrum = Math.max(1, Math.round(tuning.current.core.hpPerDrum));
     this.hud.setCore(a.drums.hats + a.drums.clap + a.drums.kick, perDrum * 3);
     this.core.setHealth(a.drums, perDrum);
@@ -229,12 +228,12 @@ export class GameScene extends Phaser.Scene {
     }
     this.pathGlow = this.add.graphics().setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.22);
     const pts = this.world.path.points.map(toScreen);
-    this.pathGlow.lineStyle(6, COLORS.pathLine, 1);
+    this.pathGlow.lineStyle(4, COLORS.pathLine, 1);
     this.pathGlow.beginPath();
     this.pathGlow.moveTo(pts[0]!.x, pts[0]!.y);
     for (const p of pts.slice(1)) this.pathGlow.lineTo(p.x, p.y);
     this.pathGlow.strokePath();
-    this.add.text(pts[0]!.x + 34, pts[0]!.y - 40, 'IN', {
+    this.add.text(pts[0]!.x + 24, pts[0]!.y - 30, 'IN', {
       fontFamily: MONO,
       fontSize: '11px',
       color: COLORS.muted,

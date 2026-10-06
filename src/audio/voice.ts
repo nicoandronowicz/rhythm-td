@@ -9,6 +9,7 @@
 import * as Tone from 'tone';
 import type { Tuning } from '../config/tuning';
 import type { HitKind } from '../music/patterns';
+import type { Chord } from '../music/theory';
 
 export { dbToGain, driveCurve } from './curves';
 
@@ -16,8 +17,10 @@ export interface HitContext {
   kind: HitKind;
   /** 0..1, already resolved from the hit kind via tuning. */
   velocity: number;
-  /** 0-based bar, for anything that follows the chords. */
-  bar: number;
+  /** The chord playing now, where we are in the 8-bar phrase, and the wave (hook and arp shapes). */
+  chord: Chord;
+  phraseBar: number;
+  wave: number;
   /** Absolute 16th step. */
   step: number;
   /** Seconds per 16th at the current tempo. */

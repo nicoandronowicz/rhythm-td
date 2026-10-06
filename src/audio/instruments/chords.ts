@@ -21,7 +21,7 @@ export class ChordsVoice extends Voice {
   trigger(time: number, hit: HitContext, t: Readonly<Tuning>): void {
     const ctx = this.ctx();
     const c = t.chords;
-    const notes = chordVoicing(hit.bar);
+    const notes = chordVoicing(hit.chord);
     const v = hit.velocity;
     const end = time + c.decay * 2 + 0.05;
 

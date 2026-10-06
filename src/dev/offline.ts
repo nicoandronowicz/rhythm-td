@@ -14,6 +14,7 @@ import { INSTRUMENTS, type InstrumentId } from '../game/instruments';
 import { TOWER_DEFS, type TowerType } from '../game/towers';
 import { hitIndexAt } from '../game/world';
 import { stepAt, type Pattern } from '../music/patterns';
+import { chordInProgression } from '../music/theory';
 import { sixteenthSeconds, stepToPosition, swingOffset, type SwingGrid } from '../music/timing';
 
 function patternOf(id: InstrumentId): Pattern {
@@ -43,7 +44,9 @@ export async function render(layers: InstrumentId[], bars = 4, t: Tuning = DEFAU
           {
             kind,
             velocity: velocityFor(kind, t.velocity),
-            bar: pos.bar,
+            chord: chordInProgression(0, pos.bar),
+            phraseBar: pos.bar % 8,
+            wave: 1,
             step,
             sixteenth: sixteenthSeconds(bpm),
             hitIndex: hitIndexAt(pattern, pos.stepInBar),

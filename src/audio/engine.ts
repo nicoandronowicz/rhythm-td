@@ -22,7 +22,6 @@ import type { DrumType } from '../game/core';
 import type { TowerType } from '../game/towers';
 import type { WaveStatus } from '../game/waves';
 import type { HitKind } from '../music/patterns';
-import { chordAtBar } from '../music/theory';
 import { sixteenthSeconds, stepToPosition, swingOffset, ticksToStep, type GridPosition, type SwingGrid } from '../music/timing';
 import { ArpVoice } from './instruments/arp';
 import { BassVoice } from './instruments/bass';
@@ -205,7 +204,16 @@ export class AudioEngine {
     for (const hit of r.hits) {
       const tower = (TOWER_TYPES as readonly string[]).includes(hit.instrument) ? (hit.instrument as TowerType) : null;
       const velocity = velocityFor(hit.kind, t.velocity) * (tower ? velocityScale.get(tower)! : 1);
-      const ctx = { kind: hit.kind, velocity, bar: pos.bar, step, sixteenth, hitIndex: hit.hitIndex };
+      const ctx = {
+        kind: hit.kind,
+        velocity,
+        chord: r.harmony.chord,
+        phraseBar: r.harmony.phraseBar,
+        wave: r.harmony.wave,
+        step,
+        sixteenth,
+        hitIndex: hit.hitIndex,
+      };
       this.voices[hit.instrument].trigger(time + swing, ctx, t);
       if (tower && r.layers[tower].staticLevel > 0.02) {
         const level = Math.min(r.layers[tower].staticLevel, 1) * dbToGain(t.fx.maxNoise);
@@ -224,7 +232,7 @@ export class AudioEngine {
       stepSeconds: sixteenth,
       step,
       pos,
-      chord: chordAtBar(pos.bar).name,
+      chord: r.harmony.chord.name,
       layers: r.layers,
       playingTowers: r.playingTowers,
       enemies: r.enemies,
@@ -275,8 +283,12 @@ export class AudioEngine {
     const prev = this.presence.get(type);
     if (prev && Math.abs(prev.cutoff - target.cutoff) < 1 && Math.abs(prev.db - target.db) < 0.1) return;
     this.presence.set(type, target);
-    const opening = !prev || target.cutoff > prev.cutoff || target.db > prev.db;
-    const ramp = opening ? 0.03 : Math.max(0.02, t.engage.closeBeats * sixteenth * 4);
+    const beat = sixteenth * 4;
+    const fromIdle = !prev || target.db > prev.db;
+    const brighter = target.cutoff > (prev?.cutoff ?? 0);
+    // Coming in from idle fades over `openBeats`; getting brighter with more enemies takes a quarter beat;
+    // settling back down takes `closeBeats`.
+    const ramp = fromIdle ? Math.max(0.03, t.engage.openBeats * beat) : brighter ? beat / 4 : Math.max(0.03, t.engage.closeBeats * beat);
     this.mixer.layers[type].setPresence(target.cutoff, target.db, ramp, time);
   }
 }

@@ -5,7 +5,7 @@
 
 import * as Tone from 'tone';
 import type { Tuning } from '../../config/tuning';
-import { leadNote, midiToFreq } from '../../music/theory';
+import { leadMotifForWave, leadNote, midiToFreq } from '../../music/theory';
 import { Voice, type HitContext } from '../voice';
 
 export class LeadVoice extends Voice {
@@ -19,7 +19,7 @@ export class LeadVoice extends Voice {
   trigger(time: number, hit: HitContext, t: Readonly<Tuning>): void {
     const ctx = this.ctx();
     const l = t.lead;
-    const f = midiToFreq(leadNote(hit.bar, hit.hitIndex));
+    const f = midiToFreq(leadNote(hit.chord, hit.phraseBar, hit.hitIndex, leadMotifForWave(hit.wave)));
     const v = hit.velocity;
     const end = time + l.decay * 2.5 + 0.05;
 

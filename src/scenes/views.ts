@@ -14,7 +14,7 @@ import type { EnemySnapshot } from '../game/world';
 import { COLORS, FONT, GRID, MONO, RENDER_SCALE } from './layout';
 import { drawShape } from './shapes';
 
-export const TOWER_SIZE = 34;
+export const TOWER_SIZE = 24;
 
 export function toScreen(p: Point): Point {
   return { x: GRID.x + p.x * GRID.cell, y: GRID.y + p.y * GRID.cell };
@@ -22,64 +22,102 @@ export function toScreen(p: Point): Point {
 
 // ---------- core ----------
 
+/** Where each drum sits on the core block: base drums on the left, perks on the right. */
+const CORE_SLOTS: Partial<Record<DrumType, { col: number; row: number }>> = {
+  kick: { col: 0, row: 0 },
+  clap: { col: 0, row: 1 },
+  hats: { col: 0, row: 2 },
+};
+
+export function setCoreSlot(drum: DrumType, col: number, row: number): void {
+  CORE_SLOTS[drum] = { col, row };
+}
+
+interface Pad {
+  circle: Phaser.GameObjects.Arc;
+  label: Phaser.GameObjects.Text;
+  pips: Phaser.GameObjects.Rectangle[];
+}
+
 export class CoreView {
-  private pads = new Map<DrumType, Phaser.GameObjects.Arc>();
-  private pips = new Map<DrumType, Phaser.GameObjects.Rectangle[]>();
+  private pads = new Map<DrumType, Pad>();
   private frame: Phaser.GameObjects.Graphics;
   private restShade: Phaser.GameObjects.Rectangle;
   readonly center: Point;
+  readonly bounds: Phaser.Geom.Rectangle;
   private dropped = new Set<DrumType>();
+  private x: number;
+  private y: number;
+  private w: number;
 
   constructor(
     private readonly scene: Phaser.Scene,
     layout: GridLayout,
   ) {
     const k = layout.core;
-    const x = GRID.x + k.col * GRID.cell + 4;
-    const y = GRID.y + k.row * GRID.cell + 4;
-    const w = k.cols * GRID.cell - 8;
-    const h = k.rows * GRID.cell - 8;
-    this.center = { x: x + w / 2, y: y + h / 2 };
+    this.x = GRID.x + k.col * GRID.cell + 3;
+    this.y = GRID.y + k.row * GRID.cell + 3;
+    this.w = k.cols * GRID.cell - 6;
+    const h = k.rows * GRID.cell - 6;
+    this.bounds = new Phaser.Geom.Rectangle(this.x, this.y, this.w, h);
+    this.center = { x: this.x + this.w / 2, y: this.y + h / 2 };
     this.frame = scene.add.graphics().setDepth(4);
-    this.frame.fillStyle(0x1b1f36, 1).fillRoundedRect(x, y, w, h, 12);
-    this.frame.lineStyle(2, 0x3b4370, 1).strokeRoundedRect(x, y, w, h, 12);
+    this.frame.fillStyle(0x1b1f36, 1).fillRoundedRect(this.x, this.y, this.w, h, 10);
+    this.frame.lineStyle(2, 0x3b4370, 1).strokeRoundedRect(this.x, this.y, this.w, h, 10);
     scene.add
-      .text(x + w / 2, y + 12, 'CORE', { fontFamily: MONO, fontSize: '11px', color: COLORS.muted, resolution: RENDER_SCALE })
+      .text(this.x + this.w / 2, this.y + 6, 'CORE', { fontFamily: MONO, fontSize: '10px', color: COLORS.muted, resolution: RENDER_SCALE })
       .setOrigin(0.5, 0)
       .setDepth(5);
-    const drums: DrumType[] = ['kick', 'clap', 'hats'];
-    drums.forEach((d, i) => {
-      const py = y + 48 + i * 42;
-      const r = d === 'kick' ? 15 : 11;
-      this.pads.set(d, scene.add.circle(x + w / 2 - 14, py, r, DRUM_DEFS[d].color, 0.35).setDepth(5));
-      this.pips.set(d, []);
-      scene.add
-        .text(x + w / 2 - 14, py + r + 3, DRUM_DEFS[d].name.toLowerCase(), {
-          fontFamily: FONT,
-          fontSize: '10px',
-          color: COLORS.dim,
-          resolution: RENDER_SCALE,
-        })
-        .setOrigin(0.5, 0)
-        .setDepth(5);
-    });
-    this.restShade = scene.add.rectangle(x, y, w, h, COLORS.background, 0).setOrigin(0, 0).setDepth(6);
+    for (const d of Object.keys(CORE_SLOTS) as DrumType[]) this.ensurePad(d);
+    this.restShade = scene.add.rectangle(this.x, this.y, this.w, h, COLORS.background, 0).setOrigin(0, 0).setDepth(6);
   }
 
-  /** Health pips beside each drum (one per leak it can still take). */
-  setHealth(drums: Record<DrumType, number>, perDrum: number): void {
-    for (const [d, pad] of this.pads) {
-      const pips = this.pips.get(d)!;
-      while (pips.length < perDrum) {
-        const i = pips.length;
-        pips.push(this.scene.add.rectangle(pad.x + 28, pad.y - 10 + i * 8, 10, 5, 0x5dffa8, 1).setDepth(5));
+  private ensurePad(drum: DrumType): Pad | null {
+    const existing = this.pads.get(drum);
+    if (existing) return existing;
+    const slot = CORE_SLOTS[drum];
+    if (!slot) return null;
+    const colW = this.w / 2;
+    const px = this.x + slot.col * colW + colW / 2 - 7;
+    const py = this.y + 34 + slot.row * 40;
+    const r = drum === 'kick' ? 10 : 8;
+    const circle = this.scene.add.circle(px, py, r, DRUM_DEFS[drum].color, 0.35).setDepth(5);
+    const label = this.scene.add
+      .text(px, py + r + 2, DRUM_DEFS[drum].name.toLowerCase(), {
+        fontFamily: FONT,
+        fontSize: '9px',
+        color: COLORS.dim,
+        resolution: RENDER_SCALE,
+      })
+      .setOrigin(0.5, 0)
+      .setDepth(5);
+    const pad: Pad = { circle, label, pips: [] };
+    this.pads.set(drum, pad);
+    return pad;
+  }
+
+  /** Health pips beside each drum (one per leak it can still take). Missing drums are hidden. */
+  setHealth(drums: Partial<Record<DrumType, number>>, perDrum: number, owned: (d: DrumType) => boolean = () => true): void {
+    for (const d of Object.keys(CORE_SLOTS) as DrumType[]) {
+      const pad = this.ensurePad(d);
+      if (!pad) continue;
+      const has = owned(d);
+      pad.circle.setVisible(has);
+      pad.label.setVisible(has);
+      while (pad.pips.length < perDrum) {
+        const i = pad.pips.length;
+        pad.pips.push(this.scene.add.rectangle(pad.circle.x + 17, pad.circle.y - 6 + i * 5, 7, 3, 0x5dffa8, 1).setDepth(5));
       }
-      pips.forEach((p, i) => p.setVisible(i < perDrum).setFillStyle(i < drums[d] ? 0x5dffa8 : 0x3b4370, 1));
-      if (drums[d] <= 0 && !this.dropped.has(d)) {
+      const hp = drums[d] ?? 0;
+      pad.pips.forEach((p, i) => p.setVisible(has && i < perDrum).setFillStyle(i < hp ? 0x5dffa8 : 0x3b4370, 1));
+      if (has && hp <= 0 && !this.dropped.has(d)) {
         this.dropped.add(d);
-        pad.setFillStyle(0x3b4370, 1);
-        this.scene.tweens.killTweensOf(pad);
-        pad.setAlpha(1).setScale(1);
+        pad.circle.setFillStyle(0x3b4370, 1);
+        this.scene.tweens.killTweensOf(pad.circle);
+        pad.circle.setAlpha(1).setScale(1);
+      } else if (hp > 0 && this.dropped.has(d)) {
+        this.dropped.delete(d);
+        pad.circle.setFillStyle(DRUM_DEFS[d].color, 0.35);
       }
     }
   }
@@ -92,12 +130,12 @@ export class CoreView {
   pulse(drum: DrumType, velocity: number): void {
     const pad = this.pads.get(drum);
     if (!pad || this.dropped.has(drum)) return;
-    this.scene.tweens.add({ targets: pad, scale: { from: 1 + 0.45 * velocity, to: 1 }, alpha: { from: 1, to: 0.35 }, duration: 180 });
+    this.scene.tweens.add({ targets: pad.circle, scale: { from: 1 + 0.45 * velocity, to: 1 }, alpha: { from: 1, to: 0.35 }, duration: 180 });
   }
 
   /** Something reached the core. */
   hit(): void {
-    const flash = this.scene.add.circle(this.center.x, this.center.y, 70, COLORS.invalid, 0.35).setDepth(6);
+    const flash = this.scene.add.circle(this.center.x, this.center.y, 60, COLORS.invalid, 0.35).setDepth(6);
     this.scene.tweens.add({ targets: flash, alpha: 0, scale: 1.4, duration: 400, onComplete: () => flash.destroy() });
     this.scene.cameras.main.shake(120, 0.002);
   }
@@ -138,10 +176,10 @@ export class TowerView {
     this.wreckShape = scene.add.graphics().setVisible(false);
     drawShape(this.wreckShape, def.shape, TOWER_SIZE, 0x3b4370, 1);
     this.wreckShape.lineStyle(2, COLORS.background, 1);
-    this.wreckShape.lineBetween(-12, -10, 2, 2).lineBetween(2, 2, -4, 14).lineBetween(2, 2, 13, -4);
-    this.muffleTint = scene.add.circle(0, 0, TOWER_SIZE / 2 + 4, 0x6f7bd6, 1).setAlpha(0);
-    this.hpBack = scene.add.rectangle(-16, -26, 32, 4, 0x000000, 0.6).setOrigin(0, 0.5).setVisible(false);
-    this.hpBar = scene.add.rectangle(-16, -26, 32, 4, 0x5dffa8, 1).setOrigin(0, 0.5).setVisible(false);
+    this.wreckShape.lineBetween(-8, -7, 1, 1).lineBetween(1, 1, -3, 10).lineBetween(1, 1, 9, -3);
+    this.muffleTint = scene.add.circle(0, 0, TOWER_SIZE / 2 + 3, 0x6f7bd6, 1).setAlpha(0);
+    this.hpBack = scene.add.rectangle(-12, -19, 24, 3, 0x000000, 0.6).setOrigin(0, 0.5).setVisible(false);
+    this.hpBar = scene.add.rectangle(-12, -19, 24, 3, 0x5dffa8, 1).setOrigin(0, 0.5).setVisible(false);
     this.container = scene.add
       .container(p.x, p.y, [this.glow, this.ring, this.body, this.outline, this.wreckShape, this.muffleTint, this.hpBack, this.hpBar])
       .setDepth(10);
@@ -206,7 +244,7 @@ export class TowerView {
     const hurt = !wreck && f < 0.999;
     this.hpBack.setVisible(hurt);
     this.hpBar.setVisible(hurt);
-    this.hpBar.width = 32 * Math.max(0, f);
+    this.hpBar.width = 24 * Math.max(0, f);
     this.hpBar.setFillStyle(f > 0.5 ? 0x5dffa8 : f > 0.25 ? 0xffc94d : 0xff4d6d);
     this.muffleTint.setAlpha(wreck ? 0 : t.muffleLevel * 0.45);
     this.staticLevel = wreck ? 0 : t.staticLevel;
@@ -266,12 +304,12 @@ export class EnemyView {
     const def = ENEMY_DEFS[e.type];
     this.body =
       def.shape === 'spike'
-        ? scene.add.star(0, 0, 7, 6, 13, def.color)
-        : scene.add.ellipse(0, 0, 28, 21, def.color);
-    this.status = scene.add.circle(0, 0, 17).setStrokeStyle(2, 0xffffff, 1).setAlpha(0);
+        ? scene.add.star(0, 0, 7, 4.5, 9.5, def.color)
+        : scene.add.ellipse(0, 0, 20, 15, def.color);
+    this.status = scene.add.circle(0, 0, 12).setStrokeStyle(2, 0xffffff, 1).setAlpha(0);
     this.status.isFilled = false;
-    this.hpBack = scene.add.rectangle(-14, -22, 28, 4, 0x000000, 0.6).setOrigin(0, 0.5);
-    this.hpBar = scene.add.rectangle(-14, -22, 28, 4, 0x5dffa8, 1).setOrigin(0, 0.5);
+    this.hpBack = scene.add.rectangle(-10, -15, 20, 3, 0x000000, 0.6).setOrigin(0, 0.5);
+    this.hpBar = scene.add.rectangle(-10, -15, 20, 3, 0x5dffa8, 1).setOrigin(0, 0.5);
     this.container = scene.add.container(0, 0, [this.status, this.body, this.hpBack, this.hpBar]).setDepth(15);
     this.lastHp = e.hp;
   }
@@ -279,7 +317,7 @@ export class EnemyView {
   update(screen: Point, e: EnemySnapshot): void {
     this.container.setPosition(screen.x, screen.y);
     const f = Math.max(0, e.hp / e.maxHp);
-    this.hpBar.width = 28 * f;
+    this.hpBar.width = 20 * f;
     this.hpBar.setFillStyle(f > 0.5 ? 0x5dffa8 : f > 0.25 ? 0xffc94d : 0xff4d6d);
     if (e.hp < this.lastHp) {
       this.scene.tweens.add({ targets: this.body, scale: { from: 1.35, to: 1 }, duration: 120 });
