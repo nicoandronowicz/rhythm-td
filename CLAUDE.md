@@ -60,11 +60,11 @@ Unit test the music module, pattern and quantization logic, next-bar queueing, c
 ## Musical spec (prototype)
 
 - 124 BPM, 4/4, 16 steps per bar. A wave is 16 bars.
-- Key: A minor. Chords alternate every 2 bars: Am7 (A C E G), then Fmaj7 (F A C E). From session 4: 8-bar progressions in A minor, a new one each wave (see design.md).
+- Key: A minor. 8-bar progressions (2 bars per chord), a new one each wave, cycling: Am7–Fmaj7–Cmaj7–G, Am7–Dm7–Fmaj7–Em7, Fmaj7–G–Am7–Am7, Am7–Em7–Fmaj7–G, Dm7–Am7–Fmaj7–G. The intro uses the first one.
 - Melodic notes come from the current chord or A minor pentatonic (A C D E G). Kill notes are dropped for now.
 - No background bed. The drum core always plays; towers add everything else.
 
-Drum core (always on, 16 steps, x = hit). Core upgrades add percussion layers (shaker, rim, ride...):
+Drum core (always on, 16 steps, x = hit). Core perks add percussion layers (Shaker, Rim/perc, Open hat), each with its own health, dropping out before the hats:
 
 | Drum | Pattern | Drops out |
 | --- | --- | --- |
@@ -108,8 +108,8 @@ One milestone per session. Don't start the next until Nico has tested the curren
 1. Sound first. Scaffold, deploy to GitHub Pages, start screen, transport, grid, place the 4 towers (free for now), layers enter on the next bar, pulses on beat, HUD bar:beat, basic tuning panel. Goal: does the groove sound good? (Done; led to the drum-core redesign.)
 2. Core, path and enemies. Drum core at the path's end, the 4 melodic towers (bass, chords, arp, lead), Static and Muffler walking the path, towers engaging and attacking on their steps, currency and costs.
 3. The beat is your health. Enemies attack towers, audible damage, tower destruction and repair, leaks damaging the core, drums dropping out, game over, endless wave scaling. Plus: idle towers in the distance, the core resting between waves, towers reacting to how many enemies are near.
-4. Bigger map (about 22×14 on the same screen) and less repetitive music (8-bar progressions, a new progression and hook each wave).
-5. Upgrades (towers and core, beat variations as perks) and combos.
+4. Bigger map (about 22×14 on the same screen) and less repetitive music (8-bar progressions, a new progression and hook each wave). Built together with 5.
+5. Upgrades (per tower; core perks Shaker, Rim/perc, Open hat) and combos.
 6. Pick 1 of 3 rewards.
 7. Sound depth: pads or strings, richer synths, groove.
 8. Balance and polish pass from Nico's play-test notes.

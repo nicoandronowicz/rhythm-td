@@ -1,6 +1,6 @@
 # Rhythm TD Design Doc v0.1
 
-Last updated Oct 2, 2026 (after the session 2 review). Source of truth for design decisions.
+Last updated Oct 6, 2026 (after the session 3 review). Source of truth for design decisions.
 
 ## Concept
 
@@ -263,3 +263,13 @@ Decided on 2 Oct 2026, after testing session 2:
 - Session 4: a bigger map on the same screen (about 22×14 cells, path about twice as long)
 - Session 4: less repetition. An 8-bar progression in A minor instead of the 2-chord vamp, a hook and arp that change each wave, and a new progression in A minor each wave (curated list)
 - Later, in a sound-depth session: pads or strings, richer synths, groove (sidechain pumping, width). Kept off the out-of-scope list as long as they are tower or core sounds, not a background bed
+
+Decided on 6 Oct 2026, after testing session 3:
+
+- Sessions 4 and 5 are built together (one-time exception to one milestone per session)
+- Idle and fighting towers sit closer together (less quiet, less filtered), and towers fade in over about a beat instead of snapping open
+- A clear wave indicator: wave number, seconds to the next wave, wave progress, and a banner when a wave starts
+- Progressions, 8 bars each (2 bars per chord), one per wave, cycling: Am7–Fmaj7–Cmaj7–G, Am7–Dm7–Fmaj7–Em7, Fmaj7–G–Am7–Am7, Am7–Em7–Fmaj7–G, Dm7–Am7–Fmaj7–G. The lead hook follows the current chord and changes shape each wave; the arp changes direction each wave
+- Tower upgrades are per tower: the upgraded pattern (more hits, more attacks) plus more damage and range, from the next bar
+- Core perks: Shaker, Rim/perc and Open hat. Each adds groove and one more drum's worth of core health, and drops out before the hats
+- Combos: build the drafts (Sidechain, Call and response, Full band). Sidechain also makes the chords and bass audibly pump with the kick
