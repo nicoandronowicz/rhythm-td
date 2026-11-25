@@ -140,7 +140,6 @@ export class GameScene extends Phaser.Scene {
     kb.on('keydown-BACKSPACE', removeHovered);
 
     const removeListener = this.engine.addListener({
-      onTriggers: (list) => list.forEach((tr) => this.coachFire(tr)),
       onHit: (e) => {
         if (e.instrument in DRUM_DEFS) this.core.pulse(e.instrument as DrumType, e.velocity);
         this.panel.flashStep(e.instrument, e.step % 16);
@@ -211,6 +210,7 @@ export class GameScene extends Phaser.Scene {
       );
     }
 
+    for (const trigger of this.engine.drainTriggers()) this.coachFire(trigger);
     const a = this.engine.audible();
     if (a) {
       if (a.step !== this.lastStep) {

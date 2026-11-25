@@ -81,8 +81,6 @@ export interface EngineListener {
   onKill?(e: StepResult['kills'][number]): void;
   onLeak?(e: StepResult['leaks'][number]): void;
   onEnemyAttack?(e: EnemyAttack): void;
-  /** Coach triggers, delivered when they are heard (may be skipped if a frame is very late). */
-  onTriggers?(e: CoachTrigger[]): void;
 }
 
 /** Where a tower layer's presence is heading. */
@@ -147,6 +145,8 @@ export class AudioEngine {
    * (the transport can fire a few late ones after a stop) and must not reach the new world.
    */
   private runStart = Infinity;
+  /** Coach triggers with the audio time they happen, never dropped (see `drainTriggers`). */
+  private triggerQueue: { time: number; trigger: CoachTrigger }[] = [];
 
   addListener(l: EngineListener): () => void {
     this.listeners.add(l);
@@ -201,6 +201,7 @@ export class AudioEngine {
     this.lifted = false;
     this.ended = false;
     this.runStart = Infinity;
+    this.triggerQueue = [];
     const t = session.audioTuning;
     this.mixer.applyTuning(t);
     this.mixer.reset(t);
@@ -237,6 +238,14 @@ export class AudioEngine {
       this.current = this.timeline.shift()!;
     }
     return this.current;
+  }
+
+  /** Coach triggers whose time has come, in order. Unlike Tone.Draw events, these are never skipped. */
+  drainTriggers(): CoachTrigger[] {
+    const now = this.now();
+    const out: CoachTrigger[] = [];
+    while (this.triggerQueue.length && this.triggerQueue[0]!.time <= now) out.push(this.triggerQueue.shift()!.trigger);
+    return out;
   }
 
   /** True once the bar a tower entered on is being heard. */
@@ -387,13 +396,13 @@ export class AudioEngine {
         }
       }, time + swing);
     }
-    if (r.kills.length || r.leaks.length || r.enemyAttacks.length || r.triggers.length) {
+    for (const trigger of r.triggers) this.triggerQueue.push({ time, trigger });
+    if (r.kills.length || r.leaks.length || r.enemyAttacks.length) {
       draw.schedule(() => {
         for (const l of this.listeners) {
           for (const k of r.kills) l.onKill?.(k);
           for (const k of r.leaks) l.onLeak?.(k);
           for (const a of r.enemyAttacks) l.onEnemyAttack?.(a);
-          if (r.triggers.length) l.onTriggers?.(r.triggers);
         }
       }, time);
     }
