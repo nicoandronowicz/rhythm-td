@@ -142,6 +142,11 @@ export class AudioEngine {
   private coreMode: CoreMode | null = null;
   private lifted = false;
   private ended = false;
+  /**
+   * Audio time the current run started. Ticks before it are left over from the previous run's clock
+   * (the transport can fire a few late ones after a stop) and must not reach the new world.
+   */
+  private runStart = Infinity;
 
   addListener(l: EngineListener): () => void {
     this.listeners.add(l);
@@ -195,6 +200,7 @@ export class AudioEngine {
     this.coreMode = null;
     this.lifted = false;
     this.ended = false;
+    this.runStart = Infinity;
     const t = session.audioTuning;
     this.mixer.applyTuning(t);
     this.mixer.reset(t);
@@ -208,7 +214,8 @@ export class AudioEngine {
     const transport = Tone.getTransport();
     transport.stop();
     transport.position = 0;
-    transport.start('+0.12');
+    this.runStart = Tone.now() + 0.12;
+    transport.start(this.runStart);
   }
 
   /** Stop the clock (back to the menu or before a new level). */
@@ -260,7 +267,7 @@ export class AudioEngine {
   /** The 16th-note tick. `time` is the exact audio time of this step. */
   private tick(time: number): void {
     const session = this.session;
-    if (!session) return;
+    if (!session || time < this.runStart - 0.001) return;
     const transport = Tone.getTransport();
     const t = session.audioTuning;
     const step = ticksToStep(transport.getTicksAtTime(time), transport.PPQ);
