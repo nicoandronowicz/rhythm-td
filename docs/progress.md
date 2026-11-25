@@ -45,10 +45,10 @@ Built in one go at Nico's request, with design calls recorded in `design.md` (25
 
 | Level | Result | Waves | Kills | Core left |
 | --- | --- | --- | --- | --- |
-| 1 · First beat | Track complete | 3 | 12 | full |
-| 2 | Track complete | 4 | 32 | full |
-| 3 (upgrades) | Track complete | 4 | 36 | full |
-| 4 (perks) | Track complete | 5 | 50 | 12/12 |
+| 1 · First Groove | Track complete | 3 | 12 | full |
+| 2 · Stabs | Track complete | 4 | 32 | full |
+| 3 · Hook Line | Track complete | 4 | 36 | full |
+| 4 · Interference | Track complete | 5 | 50 | 12/12 |
 | 5 · Chemistry (combos, rewards, Lift) | Track complete | 6 | 83 | 5/9 (wave 6 took 4 layers) |
 | Club Night (Endless) | Lost on purpose at wave 8 | 6 cleared | 81 | 0/9 |
 
