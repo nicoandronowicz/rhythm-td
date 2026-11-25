@@ -14,7 +14,7 @@ export const DEFAULT_TUNING = {
     swingGrid: 16,
   },
   mix: {
-    master: -7,
+    master: -8,
     kick: -3,
     clap: 2,
     hats: -7,
@@ -25,6 +25,10 @@ export const DEFAULT_TUNING = {
     shaker: -11.5,
     rim: 0,
     openhat: -11,
+    /** Pad trim, dB, added to each level's own pad level. */
+    pad: 0,
+    /** Risers, impacts and downlifters between sections. */
+    fx: -10,
     /** Shared short room reverb, return level. */
     room: -10,
     /** Shared dotted-8th delay, return level. */
@@ -98,6 +102,67 @@ export const DEFAULT_TUNING = {
     midLowCut: 160,
     /** Sub sine on the root, dB. */
     sub: -3,
+  },
+  pad: {
+    /** Low-pass on the pad, Hz. */
+    tone: 1400,
+    /** Fade-in time, seconds. */
+    attack: 0.8,
+    /** Detune spread between its voices, cents. */
+    spread: 14,
+    /** Send into the room reverb, dB. */
+    room: -4,
+  },
+  groove: {
+    /** Micro-timing, ms: positive = laid back, behind the grid. */
+    clapLate: 7,
+    hatsLate: 3,
+    /** Random looseness on shaker and percussion, ± ms. */
+    loose: 4,
+    /** Random velocity variation on everything except the kick, 0..0.3. */
+    humanize: 0.07,
+    /** How much the music breathes against every kick, dB (always on, subtle). */
+    pump: -2.5,
+    /** Bass plays a passing note into each chord change (1 = on). */
+    approach: 1,
+    /** Small drum variations on the last bar of each 8-bar phrase (1 = on). */
+    turnarounds: 1,
+    /** Delay throw on the lead's last note of a phrase, dB above its normal send. */
+    throw: 10,
+  },
+  atmo: {
+    /** Noise floor (tape and room), dB. -60 = off. */
+    noise: -50,
+    /** Vinyl crackle, dB. -60 = off. */
+    crackle: -46,
+    /** Gentle tape saturation on the master, 0..1. */
+    tape: 0.15,
+  },
+  lift: {
+    /** Meter gained per kill and per combo hit (1 = full). */
+    perKill: 0.045,
+    perCombo: 0.006,
+    /** Damage multiplier while lifted. */
+    damage: 1.35,
+    /** Length of a Lift, bars. */
+    bars: 8,
+  },
+  rewards: {
+    /** Shuffle: swing added and damage bonus. */
+    shuffleSwing: 0.12,
+    shuffleDamage: 0.1,
+    /** Saturation: damage bonus for Bass and Lead. */
+    saturationDamage: 0.25,
+    /** Wide mix: range bonus for every tower. */
+    wideRange: 0.15,
+    /** Tip jar: extra money per kill. */
+    tipJar: 3,
+    /** Sidechain boost multiplier added. */
+    sidechainBoost: 0.5,
+    /** Long tail: extra stun steps for Chords. */
+    longTailStun: 1,
+    /** Hot hands: crit chance added to Call & response. */
+    hotHands: 0.2,
   },
   shaker: {
     /** Band centre, Hz. */
@@ -200,6 +265,8 @@ export const DEFAULT_TUNING = {
     repair: 0.5,
   },
   waves: {
+    /** Waves to survive to win (0 = endless). Each level sets its own. */
+    toWin: 0,
     /** Drums-only bars before the first wave. */
     firstDelayBars: 4,
     /** A wave lasts this many bars... */
@@ -243,6 +310,108 @@ export const DEFAULT_TUNING = {
     damage: 0,
     /** Muffling added to the tower per attack, 0..1. Also shrinks its range. */
     effect: 0.3,
+  },
+  /** First Groove: one tower, the core, towers waking up. */
+  level1: {
+    /** Waves to survive (0 = endless). */
+    waves: 3,
+    startMoney: 120,
+    bpm: 120,
+    swing: 0.05,
+    /** Enemy HP multiplier for this level. */
+    hpScale: 0.25,
+    countBase: 3,
+    countGrowth: 1,
+    firstDelayBars: 6,
+    /** Mufflers from this wave (0 = none). */
+    mufflerFromWave: 0,
+    /** Pad level, dB. */
+    pad: -15,
+  },
+  /** Stabs: chords, stun, money. */
+  level2: {
+    /** Waves to survive (0 = endless). */
+    waves: 4,
+    startMoney: 140,
+    bpm: 122,
+    swing: 0.08,
+    /** Enemy HP multiplier for this level. */
+    hpScale: 0.6,
+    countBase: 5,
+    countGrowth: 2,
+    firstDelayBars: 4,
+    /** Mufflers from this wave (0 = none). */
+    mufflerFromWave: 0,
+    /** Pad level, dB. */
+    pad: -16,
+  },
+  /** Hook Line: arp, lead, upgrades. */
+  level3: {
+    /** Waves to survive (0 = endless). */
+    waves: 4,
+    startMoney: 170,
+    bpm: 124,
+    swing: 0.1,
+    /** Enemy HP multiplier for this level. */
+    hpScale: 0.85,
+    countBase: 6,
+    countGrowth: 2,
+    firstDelayBars: 4,
+    /** Mufflers from this wave (0 = none). */
+    mufflerFromWave: 0,
+    /** Pad level, dB. */
+    pad: -17,
+  },
+  /** Interference: enemies attack, wrecks, repair, perks. */
+  level4: {
+    /** Waves to survive (0 = endless). */
+    waves: 5,
+    startMoney: 190,
+    bpm: 123,
+    swing: 0.06,
+    /** Enemy HP multiplier for this level. */
+    hpScale: 0.9,
+    countBase: 6,
+    countGrowth: 2,
+    firstDelayBars: 4,
+    /** Mufflers from this wave (0 = none). */
+    mufflerFromWave: 2,
+    /** Pad level, dB. */
+    pad: -16,
+  },
+  /** Chemistry: combos, rewards, Lift. */
+  level5: {
+    /** Waves to survive (0 = endless). */
+    waves: 6,
+    startMoney: 220,
+    bpm: 125,
+    swing: 0.12,
+    /** Enemy HP multiplier for this level. */
+    hpScale: 1.4,
+    countBase: 7,
+    countGrowth: 3,
+    firstDelayBars: 4,
+    /** Mufflers from this wave (0 = none). */
+    mufflerFromWave: 2,
+    /** Pad level, dB. */
+    pad: -17,
+  },
+  /** Club Night: everything, no end. */
+  endless: {
+    /** Waves to survive (0 = endless). */
+    waves: 0,
+    startMoney: 160,
+    bpm: 124,
+    swing: 0.08,
+    /** Enemy HP multiplier for this level. */
+    hpScale: 1,
+    countBase: 6,
+    countGrowth: 2,
+    firstDelayBars: 6,
+    /** Mufflers from this wave (0 = none). */
+    mufflerFromWave: 2,
+    /** Pad level, dB. */
+    pad: -17,
   },
   bassTower: {
     /** Tower health. */
@@ -332,7 +501,7 @@ export interface TuningField {
 }
 
 export const TUNING_FIELDS: readonly TuningField[] = [
-  { path: 'transport.bpm', label: 'BPM', min: 90, max: 150, step: 1, group: 'Groove' },
+  { path: 'transport.bpm', label: 'BPM (124 = as designed)', min: 100, max: 148, step: 1, group: 'Groove' },
   { path: 'transport.swing', label: 'Swing', min: 0, max: 1, step: 0.01, unit: '%', group: 'Groove' },
   {
     path: 'transport.swingGrid',
@@ -358,6 +527,8 @@ export const TUNING_FIELDS: readonly TuningField[] = [
   { path: 'mix.shaker', label: 'Shaker', min: -40, max: 6, step: 0.5, unit: 'dB', group: 'Volume' },
   { path: 'mix.rim', label: 'Rim', min: -40, max: 6, step: 0.5, unit: 'dB', group: 'Volume' },
   { path: 'mix.openhat', label: 'Open hat', min: -40, max: 6, step: 0.5, unit: 'dB', group: 'Volume' },
+  { path: 'mix.pad', label: 'Pad trim', min: -20, max: 12, step: 0.5, unit: 'dB', group: 'Volume' },
+  { path: 'mix.fx', label: 'Risers & impacts', min: -40, max: 6, step: 0.5, unit: 'dB', group: 'Volume' },
   { path: 'mix.room', label: 'Room reverb', min: -40, max: 0, step: 0.5, unit: 'dB', group: 'Volume' },
   { path: 'mix.delay', label: 'Delay', min: -40, max: 0, step: 0.5, unit: 'dB', group: 'Volume' },
 
@@ -376,6 +547,24 @@ export const TUNING_FIELDS: readonly TuningField[] = [
   { path: 'core.openhatCost', label: 'Open hat price', min: 0, max: 500, step: 5, group: 'Core' },
   { path: 'core.restCutoff', label: 'Resting filter', min: 150, max: 20000, step: 50, unit: 'Hz', group: 'Core' },
   { path: 'core.restVolume', label: 'Resting volume', min: -30, max: 0, step: 0.5, unit: 'dB', group: 'Core' },
+
+  { path: 'groove.clapLate', label: 'Clap laid back', min: -20, max: 30, step: 1, unit: 'ms', group: 'Groove' },
+  { path: 'groove.hatsLate', label: 'Hats laid back', min: -20, max: 30, step: 1, unit: 'ms', group: 'Groove' },
+  { path: 'groove.loose', label: 'Percussion looseness', min: 0, max: 20, step: 1, unit: 'ms', group: 'Groove' },
+  { path: 'groove.humanize', label: 'Velocity humanize', min: 0, max: 0.3, step: 0.01, group: 'Groove' },
+  { path: 'groove.pump', label: 'Breathing pump', min: -12, max: 0, step: 0.5, unit: 'dB', group: 'Groove' },
+  { path: 'groove.approach', label: 'Bass approach notes', min: 0, max: 1, step: 1, group: 'Groove', options: [{ value: 1, label: 'on' }, { value: 0, label: 'off' }] },
+  { path: 'groove.turnarounds', label: 'Turnarounds', min: 0, max: 1, step: 1, group: 'Groove', options: [{ value: 1, label: 'on' }, { value: 0, label: 'off' }] },
+  { path: 'groove.throw', label: 'Delay throw', min: 0, max: 20, step: 0.5, unit: 'dB', group: 'Groove' },
+
+  { path: 'atmo.noise', label: 'Noise floor', min: -60, max: -20, step: 1, unit: 'dB', group: 'Atmosphere' },
+  { path: 'atmo.crackle', label: 'Vinyl crackle', min: -60, max: -20, step: 1, unit: 'dB', group: 'Atmosphere' },
+  { path: 'atmo.tape', label: 'Tape saturation', min: 0, max: 1, step: 0.01, group: 'Atmosphere' },
+
+  { path: 'lift.perKill', label: 'Lift per kill', min: 0, max: 0.3, step: 0.005, group: 'Lift' },
+  { path: 'lift.perCombo', label: 'Lift per combo hit', min: 0, max: 0.1, step: 0.001, group: 'Lift' },
+  { path: 'lift.damage', label: 'Lift damage', min: 1, max: 3, step: 0.05, unit: '×', group: 'Lift' },
+  { path: 'lift.bars', label: 'Lift length', min: 2, max: 16, step: 1, unit: 'bars', group: 'Lift' },
 
   { path: 'combos.sidechainBoost', label: 'Sidechain dmg', min: 1, max: 4, step: 0.05, unit: '×', group: 'Combos' },
   { path: 'combos.sidechainPump', label: 'Sidechain pump', min: -30, max: 0, step: 0.5, unit: 'dB', group: 'Combos' },
@@ -402,6 +591,14 @@ export const TUNING_FIELDS: readonly TuningField[] = [
   { path: 'economy.startMoney', label: 'Start money', min: 0, max: 1000, step: 10, group: 'Money' },
   { path: 'economy.refund', label: 'Refund on remove', min: 0, max: 1, step: 0.05, unit: '%', group: 'Money' },
   { path: 'economy.repair', label: 'Repair price', min: 0, max: 1, step: 0.05, unit: '%', group: 'Money' },
+
+  ...levelFields('level1', 'Level 1 · First Groove'),
+  ...levelFields('level2', 'Level 2 · Stabs'),
+  ...levelFields('level3', 'Level 3 · Hook Line'),
+  ...levelFields('level4', 'Level 4 · Interference'),
+  ...levelFields('level5', 'Level 5 · Chemistry'),
+  ...levelFields('endless', 'Endless · Club Night'),
+  ...rewardFields(),
 
   ...towerFields('bassTower', 'Bass tower'),
   ...towerFields('chordsTower', 'Chords tower'),
@@ -446,6 +643,10 @@ export const TUNING_FIELDS: readonly TuningField[] = [
   { path: 'shaker.decay', label: 'Decay', min: 0.01, max: 0.2, step: 0.005, unit: 's', group: 'Shaker', advanced: true },
   { path: 'rim.decay', label: 'Decay', min: 0.01, max: 0.3, step: 0.005, unit: 's', group: 'Rim', advanced: true },
   { path: 'openhat.decay', label: 'Decay', min: 0.05, max: 1, step: 0.01, unit: 's', group: 'Open hat', advanced: true },
+  { path: 'pad.tone', label: 'Tone', min: 200, max: 8000, step: 50, unit: 'Hz', group: 'Pad', advanced: true },
+  { path: 'pad.attack', label: 'Attack', min: 0.05, max: 3, step: 0.05, unit: 's', group: 'Pad', advanced: true },
+  { path: 'pad.spread', label: 'Spread', min: 0, max: 40, step: 1, unit: 'ct', group: 'Pad', advanced: true },
+  { path: 'pad.room', label: 'Room send', min: -60, max: 0, step: 0.5, unit: 'dB', group: 'Pad', advanced: true },
   { path: 'chords.tone', label: 'Tone', min: 500, max: 9000, step: 50, unit: 'Hz', group: 'Chords', advanced: true },
   { path: 'chords.body', label: 'Body', min: 200, max: 4000, step: 25, unit: 'Hz', group: 'Chords', advanced: true },
   { path: 'chords.decay', label: 'Decay', min: 0.05, max: 1.2, step: 0.01, unit: 's', group: 'Chords', advanced: true },
@@ -496,5 +697,36 @@ function enemyFields(section: 'static' | 'muffler', group: string): TuningField[
     { path: `${section}.attackEvery`, label: 'Attacks every', min: 1, max: 16, step: 1, unit: '16ths', group, advanced: true },
     { path: `${section}.damage`, label: 'Tower damage', min: 0, max: 100, step: 1, group, advanced: true },
     { path: `${section}.effect`, label: 'Sound effect', min: 0, max: 1, step: 0.05, group, advanced: true },
+  ];
+}
+
+type LevelSection = 'level1' | 'level2' | 'level3' | 'level4' | 'level5' | 'endless';
+
+function levelFields(section: LevelSection, group: string): TuningField[] {
+  return [
+    { path: `${section}.waves`, label: 'Waves to win', min: 0, max: 30, step: 1, group, advanced: true },
+    { path: `${section}.startMoney`, label: 'Start money', min: 0, max: 1000, step: 10, group, advanced: true },
+    { path: `${section}.bpm`, label: 'BPM', min: 100, max: 140, step: 1, group, advanced: true },
+    { path: `${section}.swing`, label: 'Swing', min: 0, max: 0.6, step: 0.01, unit: '%', group, advanced: true },
+    { path: `${section}.hpScale`, label: 'Enemy HP ×', min: 0.1, max: 3, step: 0.05, group, advanced: true },
+    { path: `${section}.countBase`, label: 'Enemies, wave 1', min: 1, max: 40, step: 1, group, advanced: true },
+    { path: `${section}.countGrowth`, label: '+ per wave', min: 0, max: 10, step: 1, group, advanced: true },
+    { path: `${section}.firstDelayBars`, label: 'First wave after', min: 0, max: 16, step: 1, unit: 'bars', group, advanced: true },
+    { path: `${section}.mufflerFromWave`, label: 'Mufflers from', min: 0, max: 20, step: 1, unit: 'wave', group, advanced: true },
+    { path: `${section}.pad`, label: 'Pad level', min: -40, max: 0, step: 0.5, unit: 'dB', group, advanced: true },
+  ];
+}
+
+function rewardFields(): TuningField[] {
+  const group = 'Rewards';
+  return [
+    { path: 'rewards.shuffleSwing', label: 'Shuffle swing', min: 0, max: 0.5, step: 0.01, group, advanced: true },
+    { path: 'rewards.shuffleDamage', label: 'Shuffle damage', min: 0, max: 1, step: 0.01, unit: '%', group, advanced: true },
+    { path: 'rewards.saturationDamage', label: 'Saturation dmg', min: 0, max: 1, step: 0.01, unit: '%', group, advanced: true },
+    { path: 'rewards.wideRange', label: 'Wide mix range', min: 0, max: 1, step: 0.01, unit: '%', group, advanced: true },
+    { path: 'rewards.tipJar', label: 'Tip jar', min: 0, max: 20, step: 1, group, advanced: true },
+    { path: 'rewards.sidechainBoost', label: 'Sidechain+', min: 0, max: 2, step: 0.05, group, advanced: true },
+    { path: 'rewards.longTailStun', label: 'Long tail stun', min: 0, max: 8, step: 1, unit: '16ths', group, advanced: true },
+    { path: 'rewards.hotHands', label: 'Hot hands crit', min: 0, max: 1, step: 0.05, unit: '%', group, advanced: true },
   ];
 }

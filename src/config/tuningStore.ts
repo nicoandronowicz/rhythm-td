@@ -66,6 +66,8 @@ export function mergeTuning(defaults: Tuning, saved: unknown): Tuning {
 export class TuningStore {
   private values: Tuning;
   private listeners = new Set<Listener>();
+  /** Bumps on every change, so derived tunings know when to recompute. */
+  version = 0;
 
   constructor(private storage: KeyValueStorage | null) {
     this.values = mergeTuning(DEFAULT_TUNING, this.loadSaved());
@@ -83,12 +85,14 @@ export class TuningStore {
     const v = clampToField(path, value);
     if (this.get(path) === v) return;
     writePath(this.values, path, v);
+    this.version++;
     this.save();
     this.listeners.forEach((fn) => fn(path, v));
   }
 
   reset(): void {
     this.values = cloneTuning(DEFAULT_TUNING);
+    this.version++;
     this.storage?.removeItem(STORAGE_KEY);
     for (const f of TUNING_FIELDS) this.listeners.forEach((fn) => fn(f.path, this.get(f.path)));
   }

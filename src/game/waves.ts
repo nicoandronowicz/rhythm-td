@@ -82,10 +82,10 @@ export class WaveClock {
   private nextStart: number | null = null;
   private waveCount = 0;
 
-  /** Called for every step, in order. Returns enemies to spawn on this step. */
-  onStep(step: number, t: WaveTuning): Spawn[] {
+  /** Called for every step, in order. Returns enemies to spawn on this step. `maxWaves` > 0 stops after that many waves. */
+  onStep(step: number, t: WaveTuning, maxWaves = 0): Spawn[] {
     if (this.nextStart === null) this.nextStart = step + Math.max(0, Math.round(t.waves.firstDelayBars)) * STEPS_PER_BAR;
-    if (step >= this.nextStart) {
+    if (step >= this.nextStart && (maxWaves <= 0 || this.waveCount < maxWaves)) {
       this.waveCount++;
       this.current = generateWave(this.waveCount, this.nextStart, t);
       this.pending.push(...this.current.spawns);

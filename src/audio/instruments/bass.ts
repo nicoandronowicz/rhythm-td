@@ -8,7 +8,7 @@
 
 import * as Tone from 'tone';
 import type { Tuning } from '../../config/tuning';
-import { bassLayerNotes, midiToFreq } from '../../music/theory';
+import { approachNote, bassLayerNotes, midiToFreq } from '../../music/theory';
 import { dbToGain, driveCurve, Voice, type HitContext } from '../voice';
 
 export class BassVoice extends Voice {
@@ -32,7 +32,8 @@ export class BassVoice extends Voice {
     const ctx = this.ctx();
     const b = t.bass;
     const v = hit.velocity;
-    const notes = bassLayerNotes(hit.chord, hit.kind === 'octave');
+    const passing = hit.approach ? approachNote(hit.nextChord) : null;
+    const notes = passing !== null ? { sub: passing, mid: passing + 12 } : bassLayerNotes(hit.chord, hit.kind === 'octave');
     const subFreq = midiToFreq(notes.sub);
     const midFreq = midiToFreq(notes.mid);
     const dur = b.length * hit.sixteenth;

@@ -146,6 +146,36 @@ export function chordVoicing(chord: Chord): number[] {
   return stack(chord, placeInRange(chord.tones[0]!, VOICING_ROOT_RANGE[0]));
 }
 
+/**
+ * Pad voicing: open and wide, root low (F2..E3), then the fifth, the third an octave up and the seventh
+ * (or the root again for a triad). Sounds like a string section, not a stab.
+ */
+export function padVoicing(chord: Chord): number[] {
+  const root = placeInRange(chord.tones[0]!, 41);
+  const third = chord.tones[1]!;
+  const fifth = chord.tones[2]!;
+  const top = chord.tones[3] ?? chord.tones[0]!;
+  const n5 = placeInRange(fifth, root + 1);
+  const n3 = placeInRange(third, n5 + 1);
+  const n7 = placeInRange(top, n3 + 1);
+  return [root, n5, n3, n7];
+}
+
+/**
+ * A bass passing note into the next chord: the scale note just below its root (A natural minor),
+ * placed right under where the next bass root will sit.
+ */
+export function approachNote(next: Chord): number {
+  const target = bassRoot(next);
+  for (let d = 1; d <= 2; d++) {
+    if (KEY_SCALE.map(pitchClassIndex).includes(pcOf(target - d))) {
+      const n = target - d;
+      return n < BASS_RANGE[0] ? n + 12 : n;
+    }
+  }
+  return target;
+}
+
 export type ArpStyle = 'up' | 'down' | 'updown' | 'broken';
 export const ARP_STYLES: readonly ArpStyle[] = ['up', 'updown', 'down', 'broken'];
 

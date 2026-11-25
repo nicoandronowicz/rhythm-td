@@ -23,6 +23,8 @@ export interface TowerDef {
   patterns: {
     base: Pattern;
     upgraded: Pattern;
+    /** Alternate part, unlocked by a reward. */
+    variant: Pattern;
   };
 }
 
@@ -38,6 +40,7 @@ export const TOWER_DEFS: Record<TowerType, TowerDef> = {
     patterns: {
       base: parsePattern('..x...x...x...x.'),
       upgraded: parsePattern('..x..ox...x..ox.'),
+      variant: parsePattern('..xx..x...xx..x.'),
     },
   },
   chords: {
@@ -51,6 +54,7 @@ export const TOWER_DEFS: Record<TowerType, TowerDef> = {
     patterns: {
       base: parsePattern('...x......x..x..'),
       upgraded: parsePattern('...x..x...x..x..'),
+      variant: parsePattern('..x...x...x...x.'),
     },
   },
   arp: {
@@ -64,6 +68,7 @@ export const TOWER_DEFS: Record<TowerType, TowerDef> = {
     patterns: {
       base: parsePattern('x.x.x.x.x.x.x.x.'),
       upgraded: parsePattern('xxxxxxxxxxxxxxxx'),
+      variant: parsePattern('x.xxx.xxx.xxx.xx'),
     },
   },
   lead: {
@@ -77,6 +82,7 @@ export const TOWER_DEFS: Record<TowerType, TowerDef> = {
     patterns: {
       base: parsePattern('x......x..x.....'),
       upgraded: parsePattern('x......x..x...x.'),
+      variant: parsePattern('x..x...x..x...x.'),
     },
   },
 };

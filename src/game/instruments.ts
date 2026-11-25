@@ -3,6 +3,14 @@
 import { DRUM_ORDER, type DrumType } from './core';
 import { TOWER_TYPES, type TowerType } from './towers';
 
-export type InstrumentId = DrumType | TowerType;
+/** The pad belongs to the core: a quiet chord bed that follows the harmony. */
+export type CoreSound = 'pad';
 
-export const INSTRUMENTS: readonly InstrumentId[] = [...DRUM_ORDER, ...TOWER_TYPES];
+export type InstrumentId = DrumType | TowerType | CoreSound;
+
+export const INSTRUMENTS: readonly InstrumentId[] = [...DRUM_ORDER, 'pad', ...TOWER_TYPES];
+
+/** Instruments routed through the core bus (they rest between waves). */
+export function isCoreInstrument(id: InstrumentId): boolean {
+  return id === 'pad' || (DRUM_ORDER as readonly string[]).includes(id);
+}

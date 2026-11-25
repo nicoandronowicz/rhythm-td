@@ -117,19 +117,7 @@ body {
   margin-top: 28px;
 }
 
-#tuning-toggle {
-  position: fixed;
-  right: 12px;
-  bottom: 12px;
-  z-index: 5;
-  font: 500 12px var(--mono);
-  color: var(--muted);
-  background: rgba(18, 22, 40, 0.85);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 8px 10px;
-  cursor: pointer;
-}
+
 
 #tuning {
   position: fixed;
@@ -262,4 +250,444 @@ body {
   color: #5dffa8;
   font-size: 12px;
   min-height: 16px;
+}
+
+
+/* ---------- shared motion ---------- */
+:root {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --green: #5dffa8;
+  --gold: #ffc94d;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+.btn {
+  font: 600 15px var(--font);
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 12px 24px;
+  cursor: pointer;
+  transition: transform 140ms var(--ease-out), background-color 160ms ease, border-color 160ms ease;
+}
+
+.btn:active {
+  transform: scale(0.97);
+}
+
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.btn:focus-visible,
+.level-card:focus-visible,
+.reward-card:focus-visible,
+.chip:focus-visible,
+.coach-ok:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 3px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .btn:hover {
+    border-color: var(--muted);
+  }
+  .btn.primary:hover {
+    background: #ff6680;
+  }
+}
+
+/* ---------- screens ---------- */
+.screen {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: radial-gradient(ellipse at 50% 40%, rgba(46, 34, 92, 0.6), rgba(11, 13, 23, 0.97) 68%);
+  overflow-y: auto;
+  transition: opacity 260ms var(--ease-out);
+}
+
+.screen.dim {
+  background: rgba(8, 10, 18, 0.72);
+  backdrop-filter: blur(6px);
+}
+
+.screen[data-leaving] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.screen-inner {
+  width: min(960px, 100%);
+  text-align: center;
+  animation: rise 320ms var(--ease-out) both;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+}
+
+.title {
+  font-size: clamp(44px, 9vw, 88px);
+  font-weight: 800;
+  margin: 0;
+  letter-spacing: -0.035em;
+  line-height: 0.95;
+}
+
+.title .beat {
+  display: inline-block;
+  margin-left: 0.22em;
+  color: var(--accent);
+  animation: thump 0.484s var(--ease-out) infinite;
+}
+
+@keyframes thump {
+  0% {
+    transform: scale(1.08);
+  }
+  60%,
+  100% {
+    transform: scale(1);
+  }
+}
+
+.subtitle {
+  color: var(--muted);
+  font-size: 18px;
+  margin: 14px 0 34px;
+}
+
+.fineprint {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 26px;
+}
+
+.screen h2 {
+  font-size: clamp(28px, 4vw, 40px);
+  margin: 0 0 6px;
+  letter-spacing: -0.02em;
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 26px;
+}
+
+/* level select */
+.levels {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  margin-top: 26px;
+  text-align: left;
+}
+
+.level-card {
+  position: relative;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  min-height: 150px;
+  padding: 18px 18px 16px;
+  background: rgba(18, 22, 40, 0.9);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  cursor: pointer;
+  text-align: left;
+  transition: transform 140ms var(--ease-out), border-color 160ms ease, background-color 160ms ease;
+  animation: rise 300ms var(--ease-out) both;
+}
+
+.level-card:active {
+  transform: scale(0.98);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .level-card:hover {
+    border-color: #4a5480;
+    background: rgba(26, 31, 56, 0.95);
+  }
+}
+
+.level-card .num {
+  font: 600 11px var(--mono);
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.level-card .name {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.level-card .teaches {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.level-card .meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 6px;
+  font: 12px var(--mono);
+  color: var(--muted);
+}
+
+.level-card .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.level-card .done {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  font: 600 11px var(--mono);
+  color: var(--green);
+}
+
+.level-card.endless {
+  border-color: rgba(255, 77, 109, 0.45);
+  background: linear-gradient(160deg, rgba(64, 22, 46, 0.9), rgba(18, 22, 40, 0.92));
+}
+
+/* end screen */
+.stats {
+  display: flex;
+  gap: 28px;
+  justify-content: center;
+  margin-top: 22px;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat b {
+  display: block;
+  font-size: 28px;
+}
+
+.stat span {
+  font: 11px var(--mono);
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+/* ---------- in-game chrome ---------- */
+.ingame {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  z-index: 15;
+  display: flex;
+  gap: 8px;
+}
+
+.ingame[hidden] {
+  display: none;
+}
+
+.chip {
+  font: 500 12px var(--mono);
+  color: var(--muted);
+  background: rgba(18, 22, 40, 0.88);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: transform 140ms var(--ease-out), color 160ms ease;
+}
+
+.chip:active {
+  transform: scale(0.96);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .chip:hover {
+    color: var(--text);
+  }
+}
+
+/* coach: bottom-left over the board, never blocks the palette */
+.coach {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 14;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  max-width: min(560px, calc(100vw - 32px));
+  padding: 14px 14px 14px 18px;
+  background: rgba(16, 20, 38, 0.96);
+  border: 1px solid #3b4370;
+  border-left: 3px solid var(--gold);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  transition: opacity 200ms var(--ease-out), transform 200ms var(--ease-out);
+}
+
+.coach[hidden] {
+  display: none;
+}
+
+.coach[data-enter] {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.coach-text {
+  margin: 2px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.coach-ok {
+  flex: none;
+  font: 600 12px var(--font);
+  color: var(--gold);
+  background: transparent;
+  border: 1px solid rgba(255, 201, 77, 0.4);
+  border-radius: 999px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: transform 140ms var(--ease-out);
+}
+
+.coach-ok:active {
+  transform: scale(0.96);
+}
+
+/* rewards: docked on the right over the side panel, so the board stays visible; the music keeps playing */
+.rewards {
+  position: fixed;
+  right: 16px;
+  top: 50%;
+  z-index: 16;
+  width: clamp(230px, 26vw, 320px);
+  transform: translateY(-50%);
+  padding: 14px;
+  background: rgba(12, 15, 30, 0.97);
+  border: 1px solid #3b4370;
+  border-radius: 16px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
+  transition: opacity 220ms var(--ease-out), transform 220ms var(--ease-out);
+}
+
+.rewards[hidden] {
+  display: none;
+}
+
+.rewards[data-enter] {
+  opacity: 0;
+  transform: translateY(-50%) translateX(12px);
+}
+
+.rewards-title {
+  margin: 0 0 10px 4px;
+  font: 600 11px var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.rewards-cards {
+  display: grid;
+  gap: 8px;
+}
+
+.reward-card {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  padding: 14px;
+  text-align: left;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--card, var(--gold));
+  border-radius: 12px;
+  cursor: pointer;
+  transition: transform 140ms var(--ease-out), border-color 160ms ease;
+  animation: rise 260ms var(--ease-out) both;
+}
+
+.reward-card:nth-child(2) {
+  animation-delay: 40ms;
+}
+
+.reward-card:nth-child(3) {
+  animation-delay: 75ms;
+}
+
+.reward-card:active {
+  transform: scale(0.97);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .reward-card:hover {
+    border-color: var(--card, var(--gold));
+  }
+}
+
+.reward-card .key {
+  font: 600 11px var(--mono);
+  color: var(--muted);
+}
+
+.reward-card .name {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.reward-card .game {
+  font-size: 13px;
+}
+
+.reward-card .sound {
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .screen-inner,
+  .level-card,
+  .reward-card {
+    animation: none;
+  }
+  .title .beat {
+    animation: none;
+  }
+  .coach,
+  .rewards {
+    transition: opacity 200ms ease;
+  }
+  .coach[data-enter] {
+    transform: none;
+  }
+  .rewards[data-enter] {
+    transform: translateY(-50%);
+  }
 }

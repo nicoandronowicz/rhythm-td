@@ -19,8 +19,15 @@ export interface HitContext {
   velocity: number;
   /** The chord playing now, where we are in the 8-bar phrase, and the wave (hook and arp shapes). */
   chord: Chord;
+  nextChord: Chord;
   phraseBar: number;
   wave: number;
+  /** Bass passing note into the next chord. */
+  approach?: boolean;
+  /** Bars to hold (pad). */
+  sustainBars?: number;
+  /** Extra stereo width from rewards, 0..1+. */
+  width?: number;
   /** Absolute 16th step. */
   step: number;
   /** Seconds per 16th at the current tempo. */

@@ -2,10 +2,12 @@
  * Mixer: one channel per instrument (drums and towers), shared room reverb and ping-pong delay,
  * and the master bus.
  *
- *   voice -> bitcrush (Static) -> wobbling low-pass (Muffler) -> presence low-pass + volume -> channel -> bus
- *   drums: bus = core bus (low-pass + volume: rests between waves) -> master
+ *   voice -> bitcrush (Static) -> wobbling low-pass (Muffler) -> presence low-pass + volume -> pump -> channel -> bus
+ *   drums and pad: bus = core bus (low-pass + volume: rests between waves) -> master
  *   towers: bus = master; channel -> sends -> room / delay -> master
- *   master: volume -> low cut -> glue compressor -> limiter -> safety clipper -> speakers
+ *   fx (risers, impacts): own channel -> master and room
+ *   atmosphere: noise floor and vinyl crackle -> master
+ *   master: volume -> low cut -> tape -> glue compressor -> limiter -> safety clipper -> speakers
  *
  * Enemy inserts are neutral until something attacks; presence is how close a tower sounds
  * (open while fighting, quiet and filtered in the distance when idle). Changes are scheduled
@@ -14,9 +16,8 @@
 
 import * as Tone from 'tone';
 import type { Tuning } from '../config/tuning';
-import { DRUM_DEFS } from '../game/core';
-import { INSTRUMENTS, type InstrumentId } from '../game/instruments';
-import { dbToGain, safetyCurve } from './curves';
+import { INSTRUMENTS, isCoreInstrument, type InstrumentId } from '../game/instruments';
+import { dbToGain, driveCurve, safetyCurve } from './curves';
 
 const OPEN = 20000;
 
@@ -74,16 +75,32 @@ export class LayerChannel {
 
 type Bus = 'room' | 'delay';
 
-/** Which channel sends where, and which tuning value sets the level. */
-const SENDS: { from: InstrumentId; to: Bus; level: keyof Tuning['sends'] }[] = [
-  { from: 'clap', to: 'room', level: 'clapRoom' },
-  { from: 'chords', to: 'room', level: 'chordsRoom' },
-  { from: 'chords', to: 'delay', level: 'chordsDelay' },
-  { from: 'arp', to: 'room', level: 'arpRoom' },
-  { from: 'arp', to: 'delay', level: 'arpDelay' },
-  { from: 'lead', to: 'room', level: 'leadRoom' },
-  { from: 'lead', to: 'delay', level: 'leadDelay' },
+/** Which channel sends where, and which tuning value sets the level (dB). */
+const SENDS: { from: InstrumentId; to: Bus; level: (t: Readonly<Tuning>) => number }[] = [
+  { from: 'clap', to: 'room', level: (t) => t.sends.clapRoom },
+  { from: 'chords', to: 'room', level: (t) => t.sends.chordsRoom },
+  { from: 'chords', to: 'delay', level: (t) => t.sends.chordsDelay },
+  { from: 'arp', to: 'room', level: (t) => t.sends.arpRoom },
+  { from: 'arp', to: 'delay', level: (t) => t.sends.arpDelay },
+  { from: 'lead', to: 'room', level: (t) => t.sends.leadRoom },
+  { from: 'lead', to: 'delay', level: (t) => t.sends.leadDelay },
+  { from: 'pad', to: 'room', level: (t) => t.pad.room },
 ];
+
+/** Vinyl crackle: a few seconds of sparse clicks, looped. */
+function crackleBuffer(ctx: BaseAudioContext): AudioBuffer {
+  const seconds = 5;
+  const buf = ctx.createBuffer(1, ctx.sampleRate * seconds, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) {
+    if (Math.random() < 0.0009) {
+      const amp = (Math.random() * 0.8 + 0.2) * (Math.random() < 0.5 ? -1 : 1);
+      // A tiny click: a few samples decaying fast.
+      for (let k = 0; k < 24 && i + k < d.length; k++) d[i + k]! += amp * Math.exp(-k / 4);
+    }
+  }
+  return buf;
+}
 
 /** Fixed stereo positions. Small, so laptop speakers still hear everything. */
 const PAN: Partial<Record<InstrumentId, keyof Tuning['hats'] | number>> = { hats: 'pan', arp: -0.12, chords: 0.08 };
@@ -108,26 +125,76 @@ export class Mixer {
   private readonly coreFilter = new Tone.Filter({ type: 'lowpass', frequency: OPEN, rolloff: -24, Q: 0.8 });
   private readonly coreVolume = new Tone.Volume(0);
 
-  private readonly sendGains: { gain: Tone.Gain; level: keyof Tuning['sends'] }[] = [];
+  private readonly sendGains: { gain: Tone.Gain; from: InstrumentId; to: Bus; level: (t: Readonly<Tuning>) => number }[] = [];
   readonly layers: Record<InstrumentId, LayerChannel>;
 
+  /** Risers, impacts and downlifters. */
+  readonly fx = new Tone.Volume(0);
+  private readonly fxRoom = new Tone.Gain(0.35);
+  private readonly tape = new Tone.WaveShaper(driveCurve(0), 4096);
+  private readonly noiseFloor = new Tone.Noise('pink');
+  private readonly noiseBand = new Tone.Filter({ type: 'bandpass', frequency: 1800, Q: 0.3 });
+  private readonly noiseVolume = new Tone.Volume(-60);
+  private crackle: Tone.Player | null = null;
+  private readonly crackleFilter = new Tone.Filter({ type: 'highpass', frequency: 1200 });
+  private readonly crackleVolume = new Tone.Volume(-60);
+  private lastT: Readonly<Tuning>;
+
   constructor(t: Readonly<Tuning>) {
+    this.lastT = t;
     this.safety.oversample = '4x';
-    this.master.chain(this.lowCut, this.glue, this.limiter, this.safety, Tone.getDestination());
+    this.tape.oversample = '2x';
+    this.master.chain(this.lowCut, this.tape, this.glue, this.limiter, this.safety, Tone.getDestination());
     this.roomIn.chain(this.reverb, this.roomReturn, this.master);
     this.delayIn.chain(this.delay, this.delayReturn, this.master);
 
     this.coreFilter.chain(this.coreVolume, this.master);
     this.layers = Object.fromEntries(
-      INSTRUMENTS.map((id) => [id, new LayerChannel(id in DRUM_DEFS ? this.coreFilter : this.master)]),
+      INSTRUMENTS.map((id) => [id, new LayerChannel(isCoreInstrument(id) ? this.coreFilter : this.master)]),
     ) as Record<InstrumentId, LayerChannel>;
     for (const s of SENDS) {
       const gain = new Tone.Gain(0);
       this.layers[s.from].channel.connect(gain);
       gain.connect(s.to === 'room' ? this.roomIn : this.delayIn);
-      this.sendGains.push({ gain, level: s.level });
+      this.sendGains.push({ gain, ...s });
     }
+    this.fx.connect(this.master);
+    this.fx.chain(this.fxRoom, this.roomIn);
+
+    // Atmosphere: always on, very quiet, under everything.
+    this.noiseFloor.chain(this.noiseBand, this.noiseVolume, this.master);
+    this.noiseFloor.start();
+    const raw = Tone.getContext().rawContext as unknown as BaseAudioContext;
+    this.crackle = new Tone.Player({ url: new Tone.ToneAudioBuffer(crackleBuffer(raw)), loop: true });
+    this.crackle.chain(this.crackleFilter, this.crackleVolume, this.master);
+    this.crackle.start();
     this.applyTuning(t);
+  }
+
+  /** Back to a clean slate for a new run: full volume, core resting, no pumps or damage. */
+  reset(t: Readonly<Tuning>): void {
+    const now = Tone.now();
+    this.master.volume.cancelScheduledValues(now);
+    this.master.volume.rampTo(t.mix.master, 0.05, now);
+    this.setCore(t.core.restCutoff, t.core.restVolume, 0.02, now);
+    for (const id of INSTRUMENTS) {
+      const layer = this.layers[id];
+      layer.pump.gain.cancelScheduledValues(now);
+      layer.pump.gain.setValueAtTime(1, now);
+      layer.setDamage(0, 0, now, t);
+    }
+  }
+
+  /** Delay throw: push one hit much harder into the delay, then back. */
+  throwDelay(id: InstrumentId, extraDb: number, time: number, seconds: number): void {
+    for (const s of this.sendGains) {
+      if (s.from !== id || s.to !== 'delay') continue;
+      const base = s.level(this.lastT) <= -60 ? 0 : dbToGain(s.level(this.lastT));
+      const g = s.gain.gain;
+      g.cancelScheduledValues(time);
+      g.setValueAtTime(base * dbToGain(extraDb), time);
+      g.setValueAtTime(base, time + seconds);
+    }
   }
 
   /** Wait for the reverb impulse to be generated. */
@@ -155,7 +222,12 @@ export class Mixer {
   }
 
   applyTuning(t: Readonly<Tuning>): void {
+    this.lastT = t;
     this.master.volume.value = t.mix.master;
+    this.fx.volume.value = t.mix.fx;
+    this.tape.setMap(driveCurve(Math.min(Math.max(t.atmo.tape, 0), 1)));
+    this.noiseVolume.volume.value = t.atmo.noise <= -60 ? -120 : t.atmo.noise;
+    this.crackleVolume.volume.value = t.atmo.crackle <= -60 ? -120 : t.atmo.crackle;
     this.roomReturn.volume.value = t.mix.room;
     this.delayReturn.volume.value = t.mix.delay;
     this.delay.feedback.value = Math.min(Math.max(t.sends.delayFeedback, 0), 0.9);
@@ -163,7 +235,7 @@ export class Mixer {
     for (const [id, pan] of Object.entries(PAN) as [InstrumentId, keyof Tuning['hats'] | number][]) {
       this.layers[id].channel.pan.value = typeof pan === 'number' ? pan : t.hats[pan];
     }
-    for (const s of this.sendGains) s.gain.gain.value = t.sends[s.level] <= -60 ? 0 : dbToGain(t.sends[s.level]);
+    for (const s of this.sendGains) s.gain.gain.value = s.level(t) <= -60 ? 0 : dbToGain(s.level(t));
     this.setTempo(t.transport.bpm);
   }
 }

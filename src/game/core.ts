@@ -31,6 +31,19 @@ export const PERK_DRUMS: readonly PerkDrum[] = ['shaker', 'rim', 'openhat'];
 /** Drop-out order: perks first (last bought style: open hat, rim, shaker), then hats, clap, kick. */
 export const DRUM_ORDER: readonly DrumType[] = ['openhat', 'rim', 'shaker', 'hats', 'clap', 'kick'];
 
+/** Turnaround on the last bar of each 8-bar phrase: the kick drops for the last beat, the clap rolls into the next phrase. */
+export const TURNAROUND: Partial<Record<DrumType, Pattern>> = {
+  kick: parsePattern('x...x...x.......'),
+  clap: parsePattern('....x.......gxxX'),
+  hats: parsePattern('..x...x...x.x.xx'),
+  openhat: parsePattern('..x...x...x....X'),
+};
+
+/** During a Lift the hats go double time. */
+export const LIFT_PATTERNS: Partial<Record<DrumType, Pattern>> = {
+  hats: parsePattern('xxXxxxXxxxXxxxXx'),
+};
+
 export function isPerk(d: DrumType): d is PerkDrum {
   return (PERK_DRUMS as readonly string[]).includes(d);
 }

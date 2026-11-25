@@ -45,14 +45,21 @@ export class ChordsVoice extends Voice {
     lp.connect(amp);
     this.into(amp, this.lowCut);
 
+    // The two detuned saws of each note sit left and right: a wide stab that still sums to mono cleanly.
+    const width = Math.min(0.9, 0.35 + (hit.width ?? 0) * 0.35);
     for (const n of notes) {
       const f = midiToFreq(n);
-      for (const cents of [-c.detune / 2, c.detune / 2]) {
+      for (const [cents, side] of [
+        [-c.detune / 2, -1],
+        [c.detune / 2, 1],
+      ] as const) {
         const o = ctx.createOscillator();
         o.type = 'sawtooth';
         o.frequency.value = f;
         o.detune.value = cents;
-        o.connect(sawLevel);
+        const pan = ctx.createStereoPanner();
+        pan.pan.value = side * width;
+        o.connect(pan).connect(sawLevel);
         o.start(time);
         o.stop(end);
       }

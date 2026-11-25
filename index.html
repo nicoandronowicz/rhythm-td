@@ -10,24 +10,23 @@
   <body>
     <div id="game"></div>
 
-    <div id="start" class="overlay">
-      <div class="start-card">
-        <h1>Rhythm TD</h1>
-        <p class="tagline">The defense is the track.</p>
-        <button id="start-button" type="button">Click to start</button>
-        <p class="hint">Sound on. Headphones or laptop speakers both work.</p>
-      </div>
+    <!-- Title, level select, pause and end screens are built by src/app/screens.ts -->
+    <div id="screens"></div>
+
+    <div id="coach" class="coach" hidden>
+      <p class="coach-text"></p>
+      <button type="button" class="coach-ok">Got it</button>
     </div>
 
-    <div id="gameover" class="overlay" hidden>
-      <div class="start-card">
-        <h1>The beat stopped</h1>
-        <p class="tagline" id="gameover-text"></p>
-        <button id="restart-button" type="button">Play again</button>
-      </div>
+    <div id="rewards" class="rewards" hidden>
+      <p class="rewards-title">Wave cleared · pick one</p>
+      <div class="rewards-cards"></div>
     </div>
 
-    <button id="tuning-toggle" type="button" title="Tuning (T)">Tuning · T</button>
+    <div id="ingame" class="ingame" hidden>
+      <button id="pause-button" type="button" class="chip" title="Pause (Esc)">Pause · Esc</button>
+      <button id="tuning-toggle" type="button" class="chip" title="Tuning (T)">Tuning · T</button>
+    </div>
     <aside id="tuning" hidden></aside>
 
     <script type="module" src="/src/main.ts"></script>

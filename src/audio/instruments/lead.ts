@@ -9,6 +9,9 @@ import { leadMotifForWave, leadNote, midiToFreq } from '../../music/theory';
 import { Voice, type HitContext } from '../voice';
 
 export class LeadVoice extends Voice {
+  /** Last note and when it ended, for glides between close notes. */
+  private lastFreq = 0;
+  private lastEnd = -1;
   private readonly lowCut = new Tone.Filter({ type: 'highpass', frequency: 200, rolloff: -12 });
 
   constructor() {
@@ -35,12 +38,26 @@ export class LeadVoice extends Voice {
     amp.gain.setTargetAtTime(v * 0.32, time + 0.004, 0.05);
     amp.gain.setTargetAtTime(0, time + l.decay * 0.5, l.decay / 4);
 
-    const oscs: OscillatorNode[] = [];
+    // Glide from the previous note when it was close in time and pitch, like a played lead.
+    const glide = this.lastFreq > 0 && time - this.lastEnd < 0.35 && Math.abs(Math.log2(f / this.lastFreq)) < 0.6;
+    const from = glide ? this.lastFreq : f;
+    this.lastFreq = f;
+    this.lastEnd = time + l.decay;
+    // Vibrato that fades in after the attack.
+    const vib = ctx.createOscillator();
+    vib.frequency.value = 5.2;
+    const vibDepth = ctx.createGain();
+    vibDepth.gain.setValueAtTime(0, time);
+    vibDepth.gain.linearRampToValueAtTime(f * 0.006, time + 0.25);
+
+    const oscs: OscillatorNode[] = [vib];
     for (const cents of [-l.detune / 2, l.detune / 2]) {
       const o = ctx.createOscillator();
       o.type = 'sawtooth';
-      o.frequency.value = f;
+      o.frequency.setValueAtTime(from, time);
+      if (glide) o.frequency.exponentialRampToValueAtTime(f, time + 0.045);
       o.detune.value = cents;
+      vib.connect(vibDepth).connect(o.frequency);
       o.connect(lp);
       oscs.push(o);
     }

@@ -33,7 +33,7 @@ describe('drum core', () => {
     const t = quiet();
     const { results, run } = setup(t);
     run(16);
-    const at = (s: number) => results[s]!.hits.map((h) => h.instrument).sort();
+    const at = (s: number) => results[s]!.hits.map((h) => h.instrument).filter((i) => i !== 'pad').sort();
     expect(at(0)).toEqual(['kick']);
     expect(at(2)).toEqual(['hats']);
     expect(at(4)).toEqual(['clap', 'kick']);
@@ -616,6 +616,185 @@ describe('combos in play', () => {
     run(1);
     expect(world.combos.byTower.get(b.tower.id)?.has('fullBand')).toBe(true);
     expect(world.rangeOf(b.tower, t)).toBeCloseTo(t.bassTower.range * (1 + t.combos.fullBandRange));
+  });
+});
+
+describe('pad and arrangement', () => {
+  it('the pad plays a chord at the start of every 2-bar chord, held for 2 bars', () => {
+    const t = quiet();
+    const { run, results } = setup(t);
+    run(16 * 6);
+    const padSteps = results.filter((r) => r.hits.some((h) => h.instrument === 'pad')).map((r) => r.step);
+    expect(padSteps).toEqual([0, 32, 64]);
+    expect(results[0]!.hits.find((h) => h.instrument === 'pad')!.sustainBars).toBe(2);
+  });
+
+  it('turnaround on the last bar of a phrase while the core is active: the kick drops its last beat', () => {
+    const t = quiet();
+    const { world, run, results } = setup(t);
+    world.addEnemy('static', 1e9, 1).stunLeft = 1e9; // keeps the core active
+    run(16 * 8);
+    const kickInBar = (bar: number) =>
+      results.slice(bar * 16, bar * 16 + 16).filter((r) => r.hits.some((h) => h.instrument === 'kick')).length;
+    expect(kickInBar(6)).toBe(4);
+    expect(kickInBar(7)).toBe(3);
+  });
+
+  it('no turnaround while the core rests', () => {
+    const t = quiet();
+    const { run, results } = setup(t);
+    run(16 * 8);
+    expect(results.slice(112, 128).filter((r) => r.hits.some((h) => h.instrument === 'kick')).length).toBe(4);
+  });
+
+  it('the bass plays a passing note on its last hit before a chord change', () => {
+    const t = quiet();
+    const { world, run, results } = setup(t);
+    world.place('bass', NEAR_START, t);
+    world.addEnemy('static', 1e9, 1.9).stunLeft = 1e9;
+    run(16 * 4);
+    const approaches = results.flatMap((r) => r.hits.filter((h) => h.instrument === 'bass' && h.approach).map(() => r.step));
+    // Chords change every 2 bars: bar 1 -> 2 is a change (step 30), bar 3 -> 4 is a change (step 62).
+    expect(approaches).toEqual([30, 62]);
+  });
+
+  it('a riser leads into each wave and an impact lands on its first beat', () => {
+    const t = JSON.parse(JSON.stringify(DEFAULT_TUNING)) as Tuning;
+    t.waves.firstDelayBars = 3;
+    const { run, results } = setup(t);
+    run(16 * 4);
+    const riser = results.findIndex((r) => r.events.some((e) => e.kind === 'riser'));
+    expect(riser).toBe(32);
+    expect(results[48]!.events.some((e) => e.kind === 'impact')).toBe(true);
+  });
+});
+
+describe('levels', () => {
+  it('only the level\'s towers can be built, and locked mechanics refuse', async () => {
+    const { levelById } = await import('../src/game/levels');
+    const { rulesFor } = await import('../src/game/world');
+    const { tuningForLevel } = await import('../src/config/levelTuning');
+    const level = levelById('level1');
+    const t = tuningForLevel(DEFAULT_TUNING, level);
+    const world = new World(new Board(level.map), t, () => 0.5, rulesFor(level));
+    expect(world.place('lead', { col: 2, row: 3 }, t)).toEqual({ ok: false, reason: 'locked' });
+    const r = world.place('bass', { col: 2, row: 3 }, t);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(world.upgrade(r.tower.id, t)).toEqual({ ok: false, reason: 'locked' });
+    expect(world.buyPerk('shaker', t)).toEqual({ ok: false, reason: 'locked' });
+  });
+
+  it('a level is won when its last wave is cleared, and no further wave starts', async () => {
+    const t = quiet((x) => {
+      x.waves.firstDelayBars = 0;
+      x.waves.toWin = 2;
+      x.waves.countBase = 1;
+      x.waves.countGrowth = 0;
+    });
+    const { world, run } = setup(t);
+    for (let i = 0; i < 16 * 60 && !world.victory; i++) {
+      run(1);
+      world.enemies.clear(); // instant kills
+    }
+    expect(world.victory).toBe(true);
+    expect(world.wavesSurvived).toBe(2);
+    run(16 * 40);
+    expect(world.waves.status(0).wave).toBe(2);
+  });
+
+  it('levels without enemy attacks never damage towers', async () => {
+    const { levelById } = await import('../src/game/levels');
+    const { tuningForLevel } = await import('../src/config/levelTuning');
+    const t = tuningForLevel(DEFAULT_TUNING, levelById('level2'));
+    expect(t.static.damage).toBe(0);
+    expect(t.static.effect).toBe(0);
+    expect(t.waves.mufflerFromWave).toBeGreaterThan(100);
+    expect(t.waves.toWin).toBe(DEFAULT_TUNING.level2.waves);
+  });
+});
+
+describe('rewards', () => {
+  function clearOneWave(t: Tuning) {
+    const s = setup(t, () => 0);
+    for (let i = 0; i < 16 * 30 && !s.world.rewardOffer; i++) {
+      s.run(1);
+      s.world.enemies.clear();
+    }
+    return s;
+  }
+
+  it('a cleared wave offers three different rewards', () => {
+    const t = quiet((x) => {
+      x.waves.firstDelayBars = 0;
+      x.waves.countBase = 1;
+    });
+    const { world, results } = clearOneWave(t);
+    expect(world.rewardOffer).toHaveLength(3);
+    expect(new Set(world.rewardOffer).size).toBe(3);
+    expect(results.some((r) => r.triggers.includes('rewardOffer'))).toBe(true);
+  });
+
+  it('a picked reward applies on the next bar and changes the numbers', () => {
+    const t = quiet((x) => {
+      x.waves.firstDelayBars = 0;
+      x.waves.countBase = 1;
+    });
+    const { world, run } = clearOneWave(t);
+    const r = world.place('lead', NEAR_START, t);
+    if (!r.ok) throw new Error();
+    world.rewardOffer = ['wide', 'tipjar', 'shuffle'];
+    const before = world.rangeOf(r.tower, t);
+    expect(world.chooseReward('wide')).toBe(true);
+    expect(world.rewardOffer).toBeNull();
+    run(16);
+    expect(world.rangeOf(r.tower, t)).toBeCloseTo(before * (1 + t.rewards.wideRange));
+    expect(world.rewardsTaken).toEqual(['wide']);
+  });
+
+  it('alternate parts: a variant reward changes the pattern a tower plays and attacks on', () => {
+    const t = quiet();
+    const { world, run, results } = setup(t);
+    const r = world.place('chords', NEAR_START, t);
+    if (!r.ok) throw new Error();
+    world.mods.variants.add('chords');
+    world.addEnemy('static', 1e9, 1.9).stunLeft = 1e9;
+    run(32);
+    const steps = results.slice(16).filter((x) => x.attacks.some((a) => a.type === 'chords')).map((x) => x.step % 16);
+    expect(steps).toEqual([2, 6, 10, 14]);
+  });
+
+  it('unique rewards are not offered twice', async () => {
+    const { offerRewards, REWARDS } = await import('../src/game/rewards');
+    const { levelById } = await import('../src/game/levels');
+    const taken = REWARDS.filter((x) => x.unique).map((x) => x.id);
+    for (let i = 0; i < 20; i++) {
+      const offer = offerRewards(Math.random, taken, { level: levelById('endless') });
+      for (const id of offer) expect(taken).not.toContain(id);
+    }
+  });
+});
+
+describe('lift', () => {
+  it('kills fill the meter; a full meter can be spent and starts on the next phrase, hitting harder', () => {
+    const t = quiet((x) => (x.lift.perKill = 0.5));
+    const { world, run, results } = setup(t);
+    world.place('lead', NEAR_START, t);
+    run(16);
+    expect(world.requestLift()).toBe(false);
+    for (let i = 0; i < 2; i++) world.addEnemy('static', 1, 1.9).stunLeft = 99;
+    run(16);
+    expect(world.hype).toBe(1);
+    expect(results.some((r) => r.triggers.includes('liftReady'))).toBe(true);
+    expect(world.requestLift()).toBe(true);
+    run(16 * 7); // through bar 8 (step 127)
+    expect(results.slice(0, 128).some((r) => r.lifted)).toBe(false);
+    run(1); // step 128: phrase start
+    expect(results[128]!.lifted).toBe(true);
+    expect(world.hype).toBe(0);
+    const e = world.addEnemy('static', 1e9, 1.9);
+    e.stunLeft = 1e9;
+    run(16);
+    expect(1e9 - e.hp).toBeCloseTo(3 * t.leadTower.damage * t.lift.damage);
   });
 });
 

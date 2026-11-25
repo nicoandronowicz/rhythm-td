@@ -8,7 +8,7 @@ import { BASE_DRUMS, DRUM_DEFS, PERK_DRUMS } from '../game/core';
 import type { InstrumentId } from '../game/instruments';
 import { TOWER_DEFS, TOWER_TYPES, type TowerType } from '../game/towers';
 import { STEPS_PER_BAR, type Pattern } from '../music/patterns';
-import { COLORS, FONT, GRID, MONO, PANEL, RENDER_SCALE } from './layout';
+import { COLORS, FONT, MONO, PANEL, PANEL_Y, RENDER_SCALE } from './layout';
 import { drawShape, hex } from './shapes';
 
 export type RowState = 'on' | 'idle' | 'off';
@@ -39,17 +39,20 @@ export class Panel {
   private trash: Phaser.GameObjects.Graphics;
   private trashText: Phaser.GameObjects.Text;
 
-  constructor(private readonly scene: Phaser.Scene) {
+  constructor(
+    private readonly scene: Phaser.Scene,
+    private readonly available: readonly TowerType[] = TOWER_TYPES,
+  ) {
     const x = PANEL.x;
     const w = PANEL.width;
     const text = (tx: number, ty: number, s: string | string[], style: Phaser.Types.GameObjects.Text.TextStyle) =>
       scene.add.text(tx, ty, s, { resolution: RENDER_SCALE, ...style });
     const heading = (y: number, s: string) => text(x, y, s, { fontFamily: MONO, fontSize: '11px', color: COLORS.muted });
 
-    heading(GRID.y - 22, 'TOWERS · click a cell, or drag');
+    heading(PANEL_Y - 22, 'TOWERS · click a cell, or drag');
     TOWER_TYPES.forEach((type, i) => {
       const def = TOWER_DEFS[type];
-      const y = GRID.y + i * (BUTTON_H + BUTTON_GAP);
+      const y = PANEL_Y + i * (BUTTON_H + BUTTON_GAP);
       const rect = new Phaser.Geom.Rectangle(x, y, w, BUTTON_H);
       const bg = scene.add.graphics();
       const icon = scene.add.graphics({ x: x + 30, y: y + BUTTON_H / 2 });
@@ -60,10 +63,15 @@ export class Panel {
       text(x + w - 12, y + 32, def.hotkey, { fontFamily: MONO, fontSize: '11px', color: COLORS.dim }).setOrigin(1, 0);
       const dim = scene.add.rectangle(x, y, w, BUTTON_H, COLORS.background, 0.55).setOrigin(0, 0).setVisible(false);
       this.buttons.push({ type, rect, bg, cost, dim });
+      if (!available.includes(type)) {
+        // Not in this level yet: covered, with a small note.
+        scene.add.rectangle(x, y, w, BUTTON_H, COLORS.background, 0.78).setOrigin(0, 0);
+        text(x + w - 12, y + 20, 'later level', { fontFamily: MONO, fontSize: '11px', color: COLORS.dim }).setOrigin(1, 0);
+      }
     });
 
     // Track view.
-    const trackY = GRID.y + 4 * (BUTTON_H + BUTTON_GAP) + 14;
+    const trackY = PANEL_Y + 4 * (BUTTON_H + BUTTON_GAP) + 14;
     heading(trackY, 'TRACK');
     const cellW = 14;
     const gap = 2;
@@ -121,7 +129,8 @@ export class Panel {
   }
 
   buttonAt(x: number, y: number): TowerType | null {
-    return this.buttons.find((b) => b.rect.contains(x, y))?.type ?? null;
+    const b = this.buttons.find((b) => b.rect.contains(x, y));
+    return b && this.available.includes(b.type) ? b.type : null;
   }
 
   refreshPalette(selected: TowerType | null, money: number, costOf: (t: TowerType) => number): void {
@@ -134,10 +143,11 @@ export class Panel {
       b.bg.fillRoundedRect(b.rect.x, b.rect.y, b.rect.width, b.rect.height, 10);
       b.bg.lineStyle(on ? 2 : 1, on ? def.color : COLORS.panelLine, 1);
       b.bg.strokeRoundedRect(b.rect.x, b.rect.y, b.rect.width, b.rect.height, 10);
-      b.cost.setText(`$${cost}`);
+      const locked = !this.available.includes(b.type);
+      b.cost.setText(locked ? '' : `$${cost}`);
       const affordable = money >= cost;
       b.cost.setColor(affordable ? COLORS.text : '#ff8da1');
-      b.dim.setVisible(!affordable);
+      b.dim.setVisible(!affordable && !locked);
     }
   }
 

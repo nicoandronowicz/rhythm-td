@@ -153,3 +153,31 @@ describe('lead', () => {
     expect(a).not.toEqual(b);
   });
 });
+
+describe('pad and passing notes', () => {
+  it('pad voicings are open, four notes, chord tones only', async () => {
+    const { padVoicing } = await import('../src/music/theory');
+    expect(padVoicing(CHORDS.Am7).map(midiToName)).toEqual(['A2', 'E3', 'C4', 'G4']);
+    for (const c of ALL_CHORDS) {
+      const v = padVoicing(c);
+      expect(v).toHaveLength(4);
+      for (const n of v) expect(c.tones).toContain(pcName(n));
+      for (let i = 1; i < v.length; i++) expect(v[i]!).toBeGreaterThan(v[i - 1]!);
+      expect(v[0]!).toBeGreaterThanOrEqual(41);
+    }
+  });
+
+  it('approach notes are in key, a step under the next root, in the bass range', async () => {
+    const { approachNote } = await import('../src/music/theory');
+    expect(midiToName(approachNote(CHORDS.Fmaj7))).toBe('E1');
+    expect(midiToName(approachNote(CHORDS.Am7))).toBe('G1');
+    for (const c of ALL_CHORDS) {
+      const n = approachNote(c);
+      expect(isInKey(n)).toBe(true);
+      const gap = (((bassRoot(c) - n) % 12) + 12) % 12;
+      expect([1, 2]).toContain(gap);
+      expect(n).toBeGreaterThanOrEqual(BASS_RANGE[0]);
+      expect(n).toBeLessThanOrEqual(BASS_RANGE[1] + 12);
+    }
+  });
+});
