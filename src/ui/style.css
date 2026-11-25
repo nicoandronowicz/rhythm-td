@@ -318,6 +318,12 @@ button {
   transition: opacity 260ms var(--ease-out);
 }
 
+.screen.instant,
+.screen.instant .screen-inner {
+  animation: none;
+  transition: none;
+}
+
 .screen.dim {
   background: rgba(8, 10, 18, 0.72);
   backdrop-filter: blur(6px);

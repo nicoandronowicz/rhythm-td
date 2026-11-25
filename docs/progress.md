@@ -1,5 +1,48 @@
 # Progress
 
+## 2026-11-25 · Goal: a complete, evaluable prototype (training levels, menu, rewards, music engine, Lift)
+
+Built in one go at Nico's request, with design calls recorded in `design.md` (25 Nov 2026) for review.
+
+**Shipped**
+
+- Menu and flow: title screen, level select (6 cards, ✓ on cleared levels, saved in the browser), pause (Esc, Space or the button: resume, restart, level select), win and game-over screens with stats, next level / retry. Everything restarts in place, no page reloads.
+  - `?level=level3` in the URL jumps straight into a level after the first click.
+- Training levels, each on its own map with its own track (tempo, swing, pad level), one mechanic at a time, and a coach that shows one tip at a time and reacts to what you do:
+  1. First Groove (Bass, 3 waves)
+  2. Stabs (+ Chords, 4 waves)
+  3. Hook Line (+ Arp, Lead, upgrades, 4 waves)
+  4. Interference (enemy attacks, wrecks, repair, perks, 5 waves)
+  5. Chemistry (combos, rewards, Lift, 6 waves)
+  6. Club Night (Endless, everything)
+  Locked towers show "later level"; locked mechanics explain when they unlock. A level is won when its last wave is cleared (the screen says "Track complete").
+- Pick 1 of 3 rewards after each cleared wave (levels 5 and Endless). There are 12 rewards; each changes the game and the track at once: Shuffle (+swing, +damage), Saturation, Wide mix, Tip jar, Heavy sidechain, Long tail, Hot hands, four alternate tower parts (Rolling bass, Offbeat organ, Gallop arp, Answer phrase), Patch cable. The tray docks on the right, so the board stays visible and the music keeps playing.
+- Lift (new, experimental): kills and combo hits fill a meter; press L or click it. At the next 8-bar phrase there's a riser, then an impact; for 8 bars the hats go double time, the pad swells, towers open fully and hit ×1.35.
+- Music engine, "produced track" pass:
+  - The core plays a pad: open voicing, 3 detuned saws per note spread in stereo, slow filter drift, pumping with the kick. It rests and opens with the core.
+  - Arrangement: a riser into each wave, an impact on its first beat, a downlifter when it's cleared.
+  - Turnarounds on the last bar of every 8-bar phrase: the kick drops beat 4, a clap roll, open hat.
+  - Groove: laid-back clap (+7 ms) and hats (+3 ms), loose shaker and rim, velocity humanizing, the whole track breathing against the kick (-2.5 dB, deeper with Sidechain).
+  - Bass passing notes into each chord change (a scale step below the next root).
+  - Wider chord stabs (detuned saws panned L/R) with slight per-stab filter variation; the lead glides between close notes and has delayed vibrato; delay throw on the lead's last note of a phrase; the arp's filter breathes across the phrase.
+  - Master: light tape saturation, a pink-noise floor (-50 dB) and vinyl crackle (-46 dB).
+  - Every new number is in the tuning panel: Groove, Atmosphere, Lift, Rewards, Pad, and a section per level.
+- Balance by simulation: a "good" bot and a "casual" bot on every level. Doing nothing loses every level; the good bot wins all five training levels; the casual bot wins levels 1, 3 and 4 almost always, and loses levels 2 and 5 sometimes.
+- 137 unit tests (+22): level maps (continuous path, never touching itself, ends at the core), coach order, pad voicing and passing notes, turnarounds, risers and impacts, level rules and victory, rewards (offers, uniques, effects, alternate parts), Lift.
+
+**Known issues**
+
+- Everything was tuned by measurement and simulation; nothing has been heard or play-tested by a person yet.
+- Lift is the first new mechanic; it may be too strong or too rare. Lift numbers are in the panel.
+- Club Night (Endless) is harsh on the first wave if towers are placed far from the path.
+- The coach card sits bottom-left over the board; on small windows it can cover a corner of the map.
+- Call & response still deviates from the original draft (crits on any lead hit).
+
+**Next step**
+
+- Nico plays the five training levels in order and Club Night, and answers: is it fun? Which level teaches best? Does the track sound produced? Is Lift worth keeping?
+- Then build order step 8: balance and polish from those notes.
+
 ## 2026-10-06 · Sessions 4 + 5: Bigger map, less repetition, upgrades, perks and combos
 
 Built together at Nico's request, with session 4 committed as a checkpoint first.

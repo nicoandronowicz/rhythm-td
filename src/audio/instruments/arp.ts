@@ -35,7 +35,9 @@ export class ArpVoice extends Voice {
     const lp = ctx.createBiquadFilter();
     lp.type = 'lowpass';
     lp.Q.value = a.resonance;
-    lp.frequency.setValueAtTime(a.tone, time);
+    // The filter breathes across the 8-bar phrase: darker at the start, open in the middle, closing again.
+    const sweep = 0.55 + 0.45 * Math.sin((Math.PI * (hit.phraseBar + hit.hitIndex / 8)) / 8);
+    lp.frequency.setValueAtTime(a.tone * sweep, time);
     lp.frequency.setTargetAtTime(Math.max(f * 1.5, 300), time + 0.002, a.decay / 3);
 
     const amp = ctx.createGain();

@@ -25,18 +25,22 @@ function button(label: string, onClick: () => void, primary = false): HTMLButton
 
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 
-/** Swap the current screen for a new one (or none). */
-function show(screen: HTMLElement | null): void {
+/** Swap the current screen for a new one (or none). `instant` skips the fade (keyboard-driven pause). */
+function show(screen: HTMLElement | null, instant = false): void {
   const r = root();
   for (const old of Array.from(r.children) as HTMLElement[]) {
+    if (instant) {
+      old.remove();
+      continue;
+    }
     old.setAttribute('data-leaving', '');
     window.setTimeout(() => old.remove(), 260);
   }
   if (screen) r.append(screen);
 }
 
-export function hideScreens(): void {
-  show(null);
+export function hideScreens(instant = false): void {
+  show(null, instant);
 }
 
 export function showTitle(onPlay: () => void): void {
@@ -90,14 +94,15 @@ export function showLevels(levels: readonly LevelDef[], completed: ReadonlySet<L
 }
 
 export function showPause(actions: { resume: () => void; restart: () => void; levels: () => void }): void {
-  const s = el('div', 'screen dim');
+  // Pause is usually opened with Esc: no entrance animation for keyboard actions.
+  const s = el('div', 'screen dim instant');
   const inner = el('div', 'screen-inner');
   const resume = button('Resume', actions.resume, true);
   const row = el('div', 'row');
   row.append(resume, button('Restart level', actions.restart), button('Level select', actions.levels));
   inner.append(el('h2', '', 'Paused'), el('p', 'subtitle', 'The track waits for you.'), row);
   s.append(inner);
-  show(s);
+  show(s, true);
   resume.focus();
 }
 

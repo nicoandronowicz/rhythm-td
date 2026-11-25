@@ -99,7 +99,7 @@ export class App {
     if (this.paused) {
       showPause({ resume: () => this.togglePause(), restart: () => this.restart(), levels: () => this.toLevels() });
     } else {
-      hideScreens();
+      hideScreens(true);
     }
   }
 

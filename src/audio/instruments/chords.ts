@@ -28,7 +28,8 @@ export class ChordsVoice extends Voice {
     const lp = ctx.createBiquadFilter();
     lp.type = 'lowpass';
     lp.Q.value = 1.2;
-    lp.frequency.setValueAtTime(c.tone, time);
+    // A touch of variation per stab, like a hand on the cutoff knob.
+    lp.frequency.setValueAtTime(c.tone * (0.92 + Math.random() * 0.16), time);
     lp.frequency.setTargetAtTime(c.body, time + 0.005, c.decay / 3);
 
     const amp = ctx.createGain();
