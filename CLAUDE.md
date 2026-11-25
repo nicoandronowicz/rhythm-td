@@ -114,6 +114,8 @@ One milestone per session. Don't start the next until Nico has tested the curren
 7. Sound depth: pads or strings, richer synths, groove.
 8. Balance and polish pass from Nico's play-test notes.
 
+Nov 2026 goal (built together): training levels (5 + Endless) with a coach, a menu, steps 6 and 7, the Lift mechanic, and a polish pass. See design.md, 25 Nov 2026.
+
 ## Out of scope
 
-On-beat timing inputs, drops, run export, genre forks, campaign, map randomization, more enemies, rare currency, saves, background beds, desktop or mobile packaging, final art. See `docs/design.md`.
+On-beat timing inputs, drops, run export, genre forks, a full campaign (beyond the training levels), map randomization, more enemies, rare currency, saves, background beds, desktop or mobile packaging, final art. See `docs/design.md`.

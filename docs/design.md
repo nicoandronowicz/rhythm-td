@@ -1,6 +1,6 @@
 # Rhythm TD Design Doc v0.1
 
-Last updated Oct 6, 2026 (after the session 3 review). Source of truth for design decisions.
+Last updated Nov 25, 2026 (goal: a complete, evaluable prototype). Source of truth for design decisions.
 
 ## Concept
 
@@ -275,3 +275,24 @@ Decided on 6 Oct 2026, after testing session 3:
 - Tower upgrades are per tower: the upgraded pattern (more hits, more attacks) plus more damage and range, from the next bar
 - Core perks: Shaker, Rim/perc and Open hat. Each adds groove and one more drum's worth of core health, and drops out before the hats
 - Combos: build the drafts (Sidechain, Call and response, Full band). Sidechain also makes the chords and bass audibly pump with the kick
+
+Decided on 25 Nov 2026, from Nico's goal ("a more complete prototype with training levels, a menu, a richer music engine, new mechanics that build music; at least 3–4 next phases"). Nico asked for this to be built without check-ins, so these are Claude's calls inside his brief, listed for review:
+
+- **Training levels (reopens "campaign" from the out-of-scope list, at Nico's request).** Five short levels, each teaching one thing, then Endless:
+  1. First Groove: one tower (Bass), the core, towers playing when enemies come near.
+  2. Stabs: Chords, area hits and stun, money, spreading towers along the path.
+  3. Hook Line: Arp and Lead, range, upgrades.
+  4. Interference: enemies attack towers, wrecks and repair, core perks.
+  5. Chemistry: combos, the pick-1-of-3 rewards and Lift.
+  6. Endless (Club Night): everything, the big map.
+  Each level has its own map, its own track (tempo, swing, progressions, sound palette) and a coach that explains one step at a time. Win a level by surviving its waves. All levels stay unlocked so Nico can test any of them; completed levels get a check mark saved in the browser (a small exception to "no saves").
+- **Menu:** title screen, level select, pause (resume, restart, quit), win and game-over screens, restart without reloading the page.
+- **Pick 1 of 3 rewards** (build order step 6), after each cleared wave in levels that use them. Every reward changes both the game and the music, for example Shuffle (+swing, +damage), alternate tower patterns, combo boosts, a stereo-wide mix (+range), saturation (+damage).
+- **Music engine, "produced track" pass** (build order step 7):
+  - A pad played by the core (chord-following, slow, wide, very quiet) for atmosphere. This is a core sound, not a background bed.
+  - Transitions: a riser in the bar before a wave, an impact on its first downbeat, a downlifter when a wave is cleared.
+  - Automatic turnarounds on phrase ends: small drum variations (clap roll, kick drop, open hat). These are arrangement, not player-triggered fills, which stay out of scope.
+  - Groove: micro-timing per instrument (laid-back clap, loose shaker), velocity humanising, a gentle always-on pump of the music against the kick, and a bass approach note into each chord change.
+  - Richer synths: wider chord stabs, lead glide and vibrato, delay throws at phrase ends, a light tape saturation and a noise floor (vinyl and room) on the master.
+- **New mechanic, experimental: Lift.** Kills and combo hits fill a Lift meter. When it's full, press L (or the button) and the track lifts at the next 8-bar phrase: the core opens fully, the pad swells, the hats double, and all towers hit harder for 8 bars. It is quantized to the phrase, not a timing input; drops in the original sense stay out of scope.
+- **Level and track numbers live in `tuning.ts`** as one section per level, so they stay in the tuning panel.
