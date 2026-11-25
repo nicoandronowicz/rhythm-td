@@ -47,7 +47,7 @@ export class ChordsVoice extends Voice {
     this.into(amp, this.lowCut);
 
     // The two detuned saws of each note sit left and right: a wide stab that still sums to mono cleanly.
-    const width = Math.min(0.9, 0.35 + (hit.width ?? 0) * 0.35);
+    const width = Math.min(0.9, 0.65 + (hit.width ?? 0) * 0.25);
     for (const n of notes) {
       const f = midiToFreq(n);
       for (const [cents, side] of [

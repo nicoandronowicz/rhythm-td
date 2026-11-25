@@ -17,7 +17,7 @@ export class PadVoice extends Voice {
     const bars = hit.sustainBars ?? 2;
     const hold = bars * 16 * hit.sixteenth;
     const end = time + hold + RELEASE * 2;
-    const width = Math.min(1, 0.55 + (hit.width ?? 0) * 0.4);
+    const width = Math.min(1, 0.9 + (hit.width ?? 0) * 0.1);
 
     const lp = ctx.createBiquadFilter();
     lp.type = 'lowpass';

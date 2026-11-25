@@ -14,7 +14,7 @@ export const DEFAULT_TUNING = {
     swingGrid: 16,
   },
   mix: {
-    master: -8,
+    master: -10,
     kick: -3,
     clap: 2,
     hats: -7,
@@ -30,9 +30,9 @@ export const DEFAULT_TUNING = {
     /** Risers, impacts and downlifters between sections. */
     fx: -10,
     /** Shared short room reverb, return level. */
-    room: -10,
+    room: -8,
     /** Shared dotted-8th delay, return level. */
-    delay: -12,
+    delay: -10,
   },
   sends: {
     /** Per-instrument send levels into the shared room and delay, dB (-60 = off). */
@@ -81,7 +81,7 @@ export const DEFAULT_TUNING = {
     /** Metallic ring layered under the noise, dB relative. */
     metal: -14,
     /** Stereo position, -1 left .. 1 right. */
-    pan: 0.18,
+    pan: 0.28,
   },
   bass: {
     /** Filter floor, Hz. */

@@ -402,14 +402,23 @@ export class GameScene extends Phaser.Scene {
 
   // ---------- input ----------
 
+  /**
+   * Board coordinates of a pointer, computed from its screen position every time.
+   * (Phaser's pointer.worldX is only refreshed on movement, so a tap without a prior move, as on a
+   * phone, or the first click of a level, could land on the wrong cell.)
+   */
+  private worldOf(p: Phaser.Input.Pointer): { x: number; y: number } {
+    const w = this.cameras.main.getWorldPoint(p.x, p.y);
+    return { x: w.x, y: w.y };
+  }
+
   private select(type: TowerType | null): void {
     this.selected = type;
     this.refreshCursor();
   }
 
   private onDown(p: Phaser.Input.Pointer): void {
-    const x = p.worldX;
-    const y = p.worldY;
+    const { x, y } = this.worldOf(p);
     if (this.perkMenu.open) {
       const perk = this.perkMenu.perkAt(x, y);
       if (perk) {
@@ -452,8 +461,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private onMove(p: Phaser.Input.Pointer): void {
-    const x = p.worldX;
-    const y = p.worldY;
+    const { x, y } = this.worldOf(p);
     this.hoverCell = this.cellAt(x, y);
     this.hoverCore = this.core.bounds.contains(x, y);
     const d = this.drag;
@@ -488,8 +496,7 @@ export class GameScene extends Phaser.Scene {
       this.refreshCursor();
       return;
     }
-    const x = p.worldX;
-    const y = p.worldY;
+    const { x, y } = this.worldOf(p);
     const cell = this.cellAt(x, y);
     if (d.kind === 'new') {
       if (cell && this.world.canBuild(cell)) this.placeTower(d.type, cell);

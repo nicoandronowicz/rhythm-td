@@ -30,9 +30,20 @@ Built in one go at Nico's request, with design calls recorded in `design.md` (25
 - Balance by simulation: a "good" bot and a "casual" bot on every level. Doing nothing loses every level; the good bot wins all five training levels; the casual bot wins levels 1, 3 and 4 almost always, and loses levels 2 and 5 sometimes.
 - 137 unit tests (+22): level maps (continuous path, never touching itself, ends at the core), coach order, pad voicing and passing notes, turnarounds, risers and impacts, level rules and victory, rewards (offers, uniques, effects, alternate parts), Lift.
 
+**Verified after the first build (same day)**
+
+- Full playthrough of Level 1 through the real UI (clicks, coach, three waves) to "Track complete": 12 kills, no leaks.
+- A full-run render of Level 5, with the real engine and a scripted player, saved as `renders/level5-arc.wav` (intro, the rise, wave 1, a Lift). Measured over time: resting bars about -15 dB and dark, wave and Lift bars about -12 dB and 5–7× brighter, chords following the progression, peak under 0 dBFS.
+- Real-time headroom: with every layer fighting, all upgrades, all perks and a Lift, the audio clock kept exact pace with the wall clock over 20 s (no dropouts).
+- Bugs found and fixed:
+  - **The whole mix was mono.** Tone.Channel sums its input to mono, so wide stabs, the pad and the ping-pong delay were flattened. Channels are now stereo; percussion is spread left and right; stabs and pad are wider. Width above 300 Hz went from 0.06–0.12 to 0.11–0.22.
+  - **Taps could land on the wrong cell.** The first click of a level and every touch tap used a stale pointer position. Positions are now computed from the screen on every event.
+  - Master and limiter lowered for headroom after the stereo fix made the mix louder.
+- Dev tool: `src/dev/fullRender.ts` renders any level offline and saves a WAV to `./renders` (dev server only).
+
 **Known issues**
 
-- Everything was tuned by measurement and simulation; nothing has been heard or play-tested by a person yet.
+- Everything was tuned by measurement, simulation and one scripted playthrough; nobody has listened to it or play-tested it for fun yet.
 - Lift is the first new mechanic; it may be too strong or too rare. Lift numbers are in the panel.
 - Club Night (Endless) is harsh on the first wave if towers are placed far from the path.
 - The coach card sits bottom-left over the board; on small windows it can cover a corner of the map.

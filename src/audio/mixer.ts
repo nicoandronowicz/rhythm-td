@@ -106,14 +106,21 @@ function crackleBuffer(ctx: BaseAudioContext): AudioBuffer {
 }
 
 /** Fixed stereo positions. Small, so laptop speakers still hear everything. */
-const PAN: Partial<Record<InstrumentId, keyof Tuning['hats'] | number>> = { hats: 'pan', arp: -0.12, chords: 0.08 };
+// Kick, bass, clap and lead stay centred; percussion is spread left and right around them.
+const PAN: Partial<Record<InstrumentId, keyof Tuning['hats'] | number>> = {
+  hats: 'pan',
+  openhat: 0.32,
+  shaker: -0.38,
+  rim: -0.24,
+  arp: -0.18,
+};
 
 export class Mixer {
   readonly master = new Tone.Volume(0);
   private readonly lowCut = new Tone.Filter({ type: 'highpass', frequency: 24, rolloff: -24 });
   private readonly glue = new Tone.Compressor({ threshold: -12, ratio: 2, attack: 0.015, release: 0.16, knee: 6 });
-  private readonly limiter = new Tone.Limiter(-1.5);
-  /** Transparent below -1.5 dBFS, rounds off anything the limiter lets through. Never hard-clips. */
+  private readonly limiter = new Tone.Limiter(-2.5);
+  /** Rounds off anything the limiter lets through, so nothing hard-clips. */
   private readonly safety = new Tone.WaveShaper(safetyCurve, 8192);
 
   private readonly roomIn = new Tone.Filter({ type: 'highpass', frequency: 350, rolloff: -12 });
