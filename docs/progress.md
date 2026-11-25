@@ -41,11 +41,30 @@ Built in one go at Nico's request, with design calls recorded in `design.md` (25
   - Master and limiter lowered for headroom after the stereo fix made the mix louder.
 - Dev tool: `src/dev/fullRender.ts` renders any level offline and saves a WAV to `./renders` (dev server only).
 
+**Second verification round (same day, live site, real clicks and keys)**
+
+| Level | Result | Waves | Kills | Core left |
+| --- | --- | --- | --- | --- |
+| 1 · First beat | Track complete | 3 | 12 | full |
+| 2 | Track complete | 4 | 32 | full |
+| 3 (upgrades) | Track complete | 4 | 36 | full |
+| 4 (perks) | Track complete | 5 | 50 | 12/12 |
+| 5 · Chemistry (combos, rewards, Lift) | Track complete | 6 | 83 | 5/9 (wave 6 took 4 layers) |
+| Club Night (Endless) | Lost on purpose at wave 8 | 6 cleared | 81 | 0/9 |
+
+- In Level 5, all three combos lit up from placement alone, 4 rewards were picked by clicking cards, and Lift fired from the L key on the next 8-bar phrase three times.
+- In Club Night, with 7 towers and no building after wave 6, the core went from 9/9 to 0 in waves 7–8 with $447 unspent.
+- Next level, Replay and Try again all start a fresh run with wave 1 on time.
+- Bugs found and fixed in this round:
+  - **Waves never started after Next level / Retry.** Late transport ticks from the old run leaked into the new one. The new run now ignores ticks before its own start.
+  - **Coach tips could be skipped.** They rode on the droppable visual-sync queue; they now use their own queue that never drops.
+
 **Known issues**
 
-- Everything was tuned by measurement, simulation and one scripted playthrough; nobody has listened to it or play-tested it for fun yet.
+- Everything was tuned by measurement, simulation and scripted playthroughs; nobody has listened to it or play-tested it for fun yet.
 - Lift is the first new mechanic; it may be too strong or too rare. Lift numbers are in the panel.
-- Club Night (Endless) is harsh on the first wave if towers are placed far from the path.
+- Club Night (Endless) is harsh on the first wave if towers are placed far from the path, and its ramp feels like a cliff around wave 7 (0 leaks, then a full wipe within two waves). It needs a human run to judge.
+- Level 5's last wave is a big jump from wave 5 (no leaks, then 4 core layers lost).
 - The coach card sits bottom-left over the board; on small windows it can cover a corner of the map.
 - Call & response still deviates from the original draft (crits on any lead hit).
 
