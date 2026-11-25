@@ -59,12 +59,20 @@ Built in one go at Nico's request, with design calls recorded in `design.md` (25
   - **Waves never started after Next level / Retry.** Late transport ticks from the old run leaked into the new one. The new run now ignores ticks before its own start.
   - **Coach tips could be skipped.** They rode on the droppable visual-sync queue; they now use their own queue that never drops.
 
+**Difficulty simulation (same day)**
+
+- New dev tool `src/dev/simulate.ts`: plays a level headless with a scripted player who checks in every bar (repairs, picks a reward, fires Lift, spends on towers next to the path, upgrades, perks).
+- Active player: wins every training level with 0 leaks. In Club Night they clear 14 waves perfectly, then lose in waves 15–16. That is where good cells run out (24 towers) while enemy toughness keeps compounding 22% a wave.
+- Player who barely builds: loses Level 5 by wave 4 and Club Night by wave 2.
+- So the drop I hit live (wipe at wave 7–8) came from stopping building, not from a bad curve. The real cliff is at the end of a good Club Night run.
+- `tests/difficulty.test.ts` now guards this: every training level stays winnable, Level 5 still punishes hoarding, Club Night lasts 8+ waves and still ends.
+
 **Known issues**
 
 - Everything was tuned by measurement, simulation and scripted playthroughs; nobody has listened to it or play-tested it for fun yet.
 - Lift is the first new mechanic; it may be too strong or too rare. Lift numbers are in the panel.
-- Club Night (Endless) is harsh on the first wave if towers are placed far from the path, and its ramp feels like a cliff around wave 7 (0 leaks, then a full wipe within two waves). It needs a human run to judge.
-- Level 5's last wave is a big jump from wave 5 (no leaks, then 4 core layers lost).
+- Club Night (Endless) is harsh on the first wave if towers are placed far from the path. A good run ends abruptly (perfect for 14 waves, wiped in 2); whether that should be a slope instead is Nico's call (Endless "HP growth" and "+ per wave" in the panel).
+- The training levels may be too easy for a player who builds well every bar; a casual live run of Level 5 lost 4 core layers in wave 6, the scripted active player lost none.
 - The coach card sits bottom-left over the board; on small windows it can cover a corner of the map.
 - Call & response still deviates from the original draft (crits on any lead hit).
 
