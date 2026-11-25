@@ -31,13 +31,16 @@ export class LayerChannel {
   readonly presenceVolume = new Tone.Volume(0);
   /** Sidechain pump: dips on each kick when the combo is on. */
   readonly pump = new Tone.Gain(1);
-  readonly channel = new Tone.Channel();
+  /** Fader. A plain Volume, not Tone.Channel: Tone.Channel's panner sums its input to mono. */
+  readonly channel = new Tone.Volume(0);
+  /** Balance that keeps stereo sources (wide stabs, the pad) stereo. */
+  readonly panner = new Tone.Panner({ pan: 0, channelCount: 2 });
 
   constructor(destination: Tone.ToneAudioNode) {
     this.crusher.wet.value = 0;
     this.wobble.connect(this.muffle.frequency);
     this.wobble.sync().start(0);
-    this.input.chain(this.crusher, this.muffle, this.presence, this.presenceVolume, this.pump, this.channel, destination);
+    this.input.chain(this.crusher, this.muffle, this.presence, this.presenceVolume, this.pump, this.channel, this.panner, destination);
   }
 
   /** Static noise/crush and Muffler muffling, both 0..1, with hard caps from tuning. */
@@ -69,7 +72,7 @@ export class LayerChannel {
   }
 
   dispose(): void {
-    for (const n of [this.input, this.crusher, this.muffle, this.wobble, this.presence, this.presenceVolume, this.pump, this.channel]) n.dispose();
+    for (const n of [this.input, this.crusher, this.muffle, this.wobble, this.presence, this.presenceVolume, this.pump, this.channel, this.panner]) n.dispose();
   }
 }
 
@@ -115,11 +118,11 @@ export class Mixer {
 
   private readonly roomIn = new Tone.Filter({ type: 'highpass', frequency: 350, rolloff: -12 });
   private readonly reverb = new Tone.Reverb({ decay: 1.1, preDelay: 0.008, wet: 1 });
-  private readonly roomReturn = new Tone.Channel();
+  private readonly roomReturn = new Tone.Volume(0);
 
   private readonly delayIn = new Tone.Filter({ type: 'bandpass', frequency: 1800, Q: 0.4 });
   private readonly delay = new Tone.PingPongDelay({ delayTime: 0.36, feedback: 0.3, wet: 1 });
-  private readonly delayReturn = new Tone.Channel();
+  private readonly delayReturn = new Tone.Volume(0);
 
   /** The core's drums go through here: it rests (low-passed, quieter) between waves. */
   private readonly coreFilter = new Tone.Filter({ type: 'lowpass', frequency: OPEN, rolloff: -24, Q: 0.8 });
@@ -154,7 +157,7 @@ export class Mixer {
     ) as Record<InstrumentId, LayerChannel>;
     for (const s of SENDS) {
       const gain = new Tone.Gain(0);
-      this.layers[s.from].channel.connect(gain);
+      this.layers[s.from].panner.connect(gain);
       gain.connect(s.to === 'room' ? this.roomIn : this.delayIn);
       this.sendGains.push({ gain, ...s });
     }
@@ -233,7 +236,7 @@ export class Mixer {
     this.delay.feedback.value = Math.min(Math.max(t.sends.delayFeedback, 0), 0.9);
     for (const id of INSTRUMENTS) this.layers[id].channel.volume.value = t.mix[id];
     for (const [id, pan] of Object.entries(PAN) as [InstrumentId, keyof Tuning['hats'] | number][]) {
-      this.layers[id].channel.pan.value = typeof pan === 'number' ? pan : t.hats[pan];
+      this.layers[id].panner.pan.value = typeof pan === 'number' ? pan : t.hats[pan];
     }
     for (const s of this.sendGains) s.gain.gain.value = s.level(t) <= -60 ? 0 : dbToGain(s.level(t));
     this.setTempo(t.transport.bpm);

@@ -161,11 +161,14 @@ export class AudioEngine {
     return this.ready;
   }
 
-  /** Must be called from a click/tap: browsers only allow audio after a user gesture. */
-  async init(): Promise<void> {
+  /** Dev hook: runs before every step (the offline renderer uses it to play like a player). */
+  beforeStep: ((step: number) => void) | null = null;
+
+  /** Must be called from a click/tap: browsers only allow audio after a user gesture. `offline` is for dev renders. */
+  async init(opts: { offline?: boolean } = {}): Promise<void> {
     if (this.ready) return;
-    await Tone.start();
-    Tone.getContext().lookAhead = 0.1;
+    if (!opts.offline) await Tone.start();
+    if (!opts.offline) Tone.getContext().lookAhead = 0.1;
     const t = store.current;
     this.mixer = new Mixer(t);
     this.voices = createVoices(t);
@@ -176,7 +179,7 @@ export class AudioEngine {
     this.fxVoice.output.connect(this.mixer.fx);
     await this.mixer.ready();
 
-    store.subscribe((path) => this.onTuningChange(path));
+    if (!opts.offline) store.subscribe((path) => this.onTuningChange(path));
     Tone.getTransport().scheduleRepeat((time) => this.tick(time), '16n', 0);
     this.ready = true;
   }
@@ -264,6 +267,7 @@ export class AudioEngine {
     const pos = stepToPosition(step);
     const bpm = transport.bpm.value;
     const sixteenth = sixteenthSeconds(bpm);
+    this.beforeStep?.(step);
 
     const before = session.world.rewardsTaken.length;
     const r = session.world.onStep(step, session.tuning);
