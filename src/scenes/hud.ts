@@ -38,6 +38,8 @@ export class Hud {
     private readonly scene: Phaser.Scene,
     liftEnabled = false,
     onLift: () => void = () => {},
+    /** The song's beat groups in steps (4/4: [4,4,4,4]; 7/8: [4,4,6]): one dot per group. */
+    private readonly beats: readonly number[] = [4, 4, 4, 4],
   ) {
     const y = 26;
     const text = (x: number, ty: number, s: string, style: Phaser.Types.GameObjects.Text.TextStyle) =>
@@ -50,7 +52,7 @@ export class Hud {
     label(x0, 'BAR');
     this.bar = text(x0, y + 4, '–', big);
     label(x0 + 74, 'BEAT');
-    for (let i = 0; i < 4; i++) this.beatDots.push(scene.add.circle(x0 + 82 + i * 22, y + 24, 6, 0xffffff, 0.12));
+    for (let i = 0; i < beats.length; i++) this.beatDots.push(scene.add.circle(x0 + 82 + i * 22, y + 24, 6, 0xffffff, 0.12));
     label(x0 + 180, 'CHORD');
     this.chord = text(x0 + 180, y + 7, '–', { fontFamily: FONT, fontSize: '24px', fontStyle: 'bold', color: COLORS.text });
 
@@ -88,12 +90,11 @@ export class Hud {
       .setAlpha(0);
   }
 
-  setStep(bar: number, beat: number, sixteenth: number, chord: string): void {
+  setStep(bar: number, stepInBar: number, chord: string): void {
     this.bar.setText(String(bar + 1));
     this.chord.setText(chord);
-    if (sixteenth === 0) {
-      this.beatDots.forEach((d, i) => d.setFillStyle(0xffffff, i === beat ? 0.95 : i < beat ? 0.3 : 0.12));
-    }
+    const beat = beatStart(this.beats, stepInBar);
+    if (beat >= 0) this.beatDots.forEach((d, i) => d.setFillStyle(0xffffff, i === beat ? 0.95 : i < beat ? 0.3 : 0.12));
   }
 
   setWaves(v: WaveView): void {
@@ -192,4 +193,14 @@ export class Hud {
   setStatus(s: string): void {
     this.status.setText(s);
   }
+}
+
+/** The beat group a step starts (0-based), or -1 if the step is inside a group. */
+export function beatStart(beats: readonly number[], stepInBar: number): number {
+  let pos = 0;
+  for (let i = 0; i < beats.length; i++) {
+    if (pos === stepInBar) return i;
+    pos += beats[i]!;
+  }
+  return -1;
 }

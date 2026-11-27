@@ -30,7 +30,11 @@ describe('level maps', () => {
   }
 
   it('levels teach in order: each adds towers or mechanics, Endless has everything', () => {
-    expect(LEVELS.map((l) => l.number)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(LEVELS.map((l) => l.number)).toEqual(LEVELS.map((_, i) => i + 1));
+    // Chapters come in order, training first, Endless last.
+    const chapters = LEVELS.map((l) => (l.chapter === 0 ? 99 : l.chapter));
+    expect([...chapters].sort((a, b) => a - b)).toEqual(chapters);
+    for (const l of LEVELS.filter((x) => x.chapter > 1)) expect(Object.values(l.features).every(Boolean), l.id).toBe(true);
     expect(LEVELS[0]!.towers).toEqual(['bass']);
     const last = LEVELS[LEVELS.length - 1]!;
     expect(Object.values(last.features).every(Boolean)).toBe(true);

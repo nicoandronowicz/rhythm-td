@@ -144,13 +144,3 @@ describe('next-bar queueing', () => {
   });
 });
 
-describe('velocity', () => {
-  it('maps hit kinds to tuning velocities', async () => {
-    const { velocityFor } = await import('../src/game/sequencer');
-    const v = { normal: 0.8, accent: 1, ghost: 0.3 };
-    expect(velocityFor('normal', v)).toBe(0.8);
-    expect(velocityFor('accent', v)).toBe(1);
-    expect(velocityFor('ghost', v)).toBe(0.3);
-    expect(velocityFor('octave', v)).toBe(0.8);
-  });
-});

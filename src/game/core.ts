@@ -1,49 +1,33 @@
 /**
- * The drum core: the beat you defend. Base drums always play; perks are extra percussion you buy.
- * DRUM_ORDER is the drop-out order (first to go first); losing the kick ends the run.
+ * The core: the foundation of the song you defend. Each song lists its core layers in drop-out order
+ * (the first drops first; the last is the foundation, and losing it ends the run). Layers without a
+ * perk always play; perks are extra layers you buy.
  */
 
-import { parsePattern, type Pattern } from '../music/patterns';
+import type { Tuning } from '../config/tuning';
+import type { CoreLayerDef, SongDef } from '../music/song';
 
-export type BaseDrum = 'kick' | 'clap' | 'hats';
-export type PerkDrum = 'shaker' | 'rim' | 'openhat';
-export type DrumType = BaseDrum | PerkDrum;
+export type CoreLayerId = string;
 
-export interface DrumDef {
-  type: DrumType;
-  name: string;
-  color: number;
-  pattern: Pattern;
+export function baseLayers(song: SongDef): CoreLayerDef[] {
+  return song.core.filter((l) => !l.perk);
 }
 
-export const DRUM_DEFS: Record<DrumType, DrumDef> = {
-  openhat: { type: 'openhat', name: 'Open hat', color: 0xc8f6ff, pattern: parsePattern('..x...x...x...x.') },
-  rim: { type: 'rim', name: 'Rim', color: 0xffb37a, pattern: parsePattern('...x..x.x.....x.') },
-  shaker: { type: 'shaker', name: 'Shaker', color: 0xd7ffb0, pattern: parsePattern('gxXxgxXxgxXxgxXx') },
-  hats: { type: 'hats', name: 'Hats', color: 0x9fe8ff, pattern: parsePattern('..x...x...x...x.') },
-  clap: { type: 'clap', name: 'Clap', color: 0xfff0b0, pattern: parsePattern('....x.......x...') },
-  kick: { type: 'kick', name: 'Kick', color: 0xffffff, pattern: parsePattern('x...x...x...x...') },
-};
+/** Perks, cheapest first. */
+export function perkLayers(song: SongDef): CoreLayerDef[] {
+  return song.core.filter((l) => l.perk).sort((a, b) => a.perk!.tier - b.perk!.tier);
+}
 
-export const BASE_DRUMS: readonly BaseDrum[] = ['hats', 'clap', 'kick'];
-export const PERK_DRUMS: readonly PerkDrum[] = ['shaker', 'rim', 'openhat'];
+/** The last layer standing: when it drops, the run is over. */
+export function foundation(song: SongDef): CoreLayerDef {
+  return song.core[song.core.length - 1]!;
+}
 
-/** Drop-out order: perks first (last bought style: open hat, rim, shaker), then hats, clap, kick. */
-export const DRUM_ORDER: readonly DrumType[] = ['openhat', 'rim', 'shaker', 'hats', 'clap', 'kick'];
+export function coreLayer(song: SongDef, id: CoreLayerId): CoreLayerDef | undefined {
+  return song.core.find((l) => l.id === id);
+}
 
-/** Turnaround on the last bar of each 8-bar phrase: the kick drops for the last beat, the clap rolls into the next phrase. */
-export const TURNAROUND: Partial<Record<DrumType, Pattern>> = {
-  kick: parsePattern('x...x...x.......'),
-  clap: parsePattern('....x.......gxxX'),
-  hats: parsePattern('..x...x...x.x.xx'),
-  openhat: parsePattern('..x...x...x....X'),
-};
-
-/** During a Lift the hats go double time. */
-export const LIFT_PATTERNS: Partial<Record<DrumType, Pattern>> = {
-  hats: parsePattern('xxXxxxXxxxXxxxXx'),
-};
-
-export function isPerk(d: DrumType): d is PerkDrum {
-  return (PERK_DRUMS as readonly string[]).includes(d);
+export function perkCost(layer: CoreLayerDef, t: Readonly<Tuning>): number {
+  const tier = layer.perk?.tier ?? 1;
+  return t.core[`perk${tier}Cost`];
 }

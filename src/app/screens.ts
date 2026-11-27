@@ -3,7 +3,8 @@
  * reward tray. Pure presentation; the app controller decides what to show.
  */
 
-import type { LevelDef, LevelId } from '../game/levels';
+import { CHAPTERS, type LevelDef, type LevelId } from '../game/levels';
+import { SONGS } from '../music/songs';
 import { rewardById, type RewardId } from '../game/rewards';
 import { TOWER_DEFS } from '../game/towers';
 
@@ -60,16 +61,26 @@ export function showTitle(onPlay: () => void): void {
   play.focus();
 }
 
-export function showLevels(levels: readonly LevelDef[], completed: ReadonlySet<LevelId>, onPick: (id: LevelId) => void): void {
+/** Between the click and the first beat while a song's samples load. Usually a blink. */
+export function showLoading(title: string, style: string): void {
   const s = el('div', 'screen');
   const inner = el('div', 'screen-inner');
-  inner.append(el('h2', '', 'Pick a track'), el('p', 'subtitle', 'Each training level teaches one thing. Club Night has everything, with no end.'));
-  const grid = el('div', 'levels');
-  levels.forEach((level, i) => {
-    const card = el('button', level.id === 'endless' ? 'level-card endless' : 'level-card');
-    card.type = 'button';
-    card.style.animationDelay = `${[0, 35, 65, 90, 110, 125][i] ?? 125}ms`;
-    card.append(
+  inner.append(el('h2', '', title), el('p', 'subtitle', style), el('p', 'fineprint', 'Loading the track…'));
+  s.append(inner);
+  show(s);
+}
+
+export function showLevels(levels: readonly LevelDef[], completed: ReadonlySet<LevelId>, onPick: (id: LevelId) => void): void {
+  const s = el('div', 'screen tall');
+  const inner = el('div', 'screen-inner');
+  inner.append(el('h2', '', 'Pick a track'), el('p', 'subtitle', 'Four chapters, four songs. Chapter 1 teaches one idea per level. Club Night has no end.'));
+  let index = 0;
+  const card = (level: LevelDef) => {
+    const c = el('button', level.id === 'endless' ? 'level-card endless' : 'level-card');
+    c.type = 'button';
+    // A short stagger that tapers off, so a long list never feels slow.
+    c.style.animationDelay = `${Math.min(150, Math.round(55 * Math.log2(index++ + 1)))}ms`;
+    c.append(
       el('span', 'num', level.id === 'endless' ? 'ENDLESS' : `LEVEL ${level.number}`),
       el('span', 'name', level.name),
       el('span', 'teaches', level.teaches),
@@ -82,15 +93,38 @@ export function showLevels(levels: readonly LevelDef[], completed: ReadonlySet<L
       meta.append(dot);
     }
     meta.append(level.towers.map((t) => TOWER_DEFS[t].name).join(' · '));
-    card.append(meta);
-    if (completed.has(level.id)) card.append(el('span', 'done', '✓ CLEARED'));
-    card.addEventListener('click', () => onPick(level.id));
-    grid.append(card);
-  });
-  inner.append(grid);
+    c.append(meta);
+    if (completed.has(level.id)) c.append(el('span', 'done', '✓ CLEARED'));
+    c.addEventListener('click', () => onPick(level.id));
+    return c;
+  };
+  const groups: { title: string; tag: string; blurb: string; levels: LevelDef[] }[] = [
+    ...CHAPTERS.map((ch) => ({
+      title: ch.name,
+      tag: `CHAPTER ${ch.number}`,
+      blurb: `${SONGS[ch.song].style}. ${ch.blurb}`,
+      levels: levels.filter((l) => l.chapter === ch.number),
+    })),
+    { title: 'Club Night', tag: 'ENDLESS', blurb: 'Everything on, no end. How long can you keep the groove going?', levels: levels.filter((l) => l.chapter === 0) },
+  ];
+  let first: HTMLButtonElement | null = null;
+  for (const g of groups) {
+    if (!g.levels.length) continue;
+    const section = el('section', 'chapter');
+    const head = el('div', 'chapter-head');
+    head.append(el('span', 'chapter-tag', g.tag), el('h3', '', g.title), el('p', 'chapter-blurb', g.blurb));
+    const grid = el('div', 'levels');
+    for (const l of g.levels) {
+      const c = card(l);
+      first ??= c;
+      grid.append(c);
+    }
+    section.append(head, grid);
+    inner.append(section);
+  }
   s.append(inner);
   show(s);
-  (grid.querySelector('button') as HTMLButtonElement | null)?.focus();
+  first?.focus();
 }
 
 export function showPause(actions: { resume: () => void; restart: () => void; levels: () => void }): void {

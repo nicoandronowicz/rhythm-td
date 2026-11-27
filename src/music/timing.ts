@@ -4,18 +4,19 @@
  * A "step" is an absolute 16th-note index counted from the start of the transport (step 0 = bar 1, beat 1).
  */
 
-import { STEPS_PER_BAR } from './patterns';
+/** 4/4: 16 sixteenths per bar. Songs in other meters pass their own. */
+export const STEPS_PER_BAR = 16;
 
 export const STEPS_PER_BEAT = 4;
 
 export interface GridPosition {
   /** 0-based bar index. */
   bar: number;
-  /** 0-based beat inside the bar (0..3). */
+  /** 0-based quarter-note beat inside the bar. */
   beat: number;
   /** 0-based 16th inside the beat (0..3). */
   sixteenth: number;
-  /** 0-based step inside the bar (0..15). */
+  /** 0-based step inside the bar. */
   stepInBar: number;
 }
 
@@ -25,9 +26,9 @@ export function ticksToStep(ticks: number, ppq: number): number {
   return Math.round(ticks / ticksPerStep);
 }
 
-export function stepToPosition(step: number): GridPosition {
-  const bar = Math.floor(step / STEPS_PER_BAR);
-  const stepInBar = step - bar * STEPS_PER_BAR;
+export function stepToPosition(step: number, stepsPerBar = STEPS_PER_BAR): GridPosition {
+  const bar = Math.floor(step / stepsPerBar);
+  const stepInBar = step - bar * stepsPerBar;
   return {
     bar,
     beat: Math.floor(stepInBar / STEPS_PER_BEAT),
@@ -36,16 +37,16 @@ export function stepToPosition(step: number): GridPosition {
   };
 }
 
-export function isBarStart(step: number): boolean {
-  return ((step % STEPS_PER_BAR) + STEPS_PER_BAR) % STEPS_PER_BAR === 0;
+export function isBarStart(step: number, stepsPerBar = STEPS_PER_BAR): boolean {
+  return ((step % stepsPerBar) + stepsPerBar) % stepsPerBar === 0;
 }
 
 /**
  * The first bar-start step strictly after `step`.
  * Something requested while `step` is (or has been) processed enters here.
  */
-export function nextBarStart(step: number): number {
-  return (Math.floor(step / STEPS_PER_BAR) + 1) * STEPS_PER_BAR;
+export function nextBarStart(step: number, stepsPerBar = STEPS_PER_BAR): number {
+  return (Math.floor(step / stepsPerBar) + 1) * stepsPerBar;
 }
 
 /** Seconds per 16th at a tempo. */

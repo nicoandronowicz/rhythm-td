@@ -1,13 +1,11 @@
 /**
- * Right-hand panel: tower palette (with costs), the track view (every layer's 16 steps and a
- * playhead), the remove bin and a few hints.
+ * Right-hand panel: tower palette (with costs), the track view (what every layer plays this bar,
+ * in the song's meter, with a playhead), the remove bin and a few hints.
  */
 
 import Phaser from 'phaser';
-import { BASE_DRUMS, DRUM_DEFS, PERK_DRUMS } from '../game/core';
-import type { InstrumentId } from '../game/instruments';
 import { TOWER_DEFS, TOWER_TYPES, type TowerType } from '../game/towers';
-import { STEPS_PER_BAR, type Pattern } from '../music/patterns';
+import type { SongDef } from '../music/song';
 import { COLORS, FONT, MONO, PANEL, PANEL_Y, RENDER_SCALE } from './layout';
 import { drawShape, hex } from './shapes';
 
@@ -29,11 +27,11 @@ const BUTTON_GAP = 6;
 
 export class Panel {
   private buttons: PaletteButton[] = [];
-  private cells = new Map<InstrumentId, Phaser.GameObjects.Rectangle[]>();
-  private labels = new Map<InstrumentId, Phaser.GameObjects.Text>();
-  private patterns = new Map<InstrumentId, Pattern>();
-  private colors = new Map<InstrumentId, number>();
-  private rowStates = new Map<InstrumentId, RowState>();
+  private cells = new Map<string, Phaser.GameObjects.Rectangle[]>();
+  private labels = new Map<string, Phaser.GameObjects.Text>();
+  private steps = new Map<string, ReadonlySet<number>>();
+  private colors = new Map<string, number>();
+  private rowStates = new Map<string, RowState>();
   private playhead: Phaser.GameObjects.Rectangle;
   readonly trashRect: Phaser.Geom.Rectangle;
   private trash: Phaser.GameObjects.Graphics;
@@ -41,7 +39,8 @@ export class Panel {
 
   constructor(
     private readonly scene: Phaser.Scene,
-    private readonly available: readonly TowerType[] = TOWER_TYPES,
+    private readonly available: readonly TowerType[],
+    private readonly song: SongDef,
   ) {
     const x = PANEL.x;
     const w = PANEL.width;
@@ -73,39 +72,40 @@ export class Panel {
     // Track view.
     const trackY = PANEL_Y + 4 * (BUTTON_H + BUTTON_GAP) + 14;
     heading(trackY, 'TRACK');
-    const cellW = 14;
+    const spb = song.stepsPerBar;
+    const groups = song.beats.length;
     const gap = 2;
-    const left = x + 52;
+    const left = x + 56;
+    const cellW = Math.floor((w - 56 - (spb - 1) * gap - (groups - 1) * 3) / spb);
     const rowH = 14;
-    const drums = [...[...BASE_DRUMS].reverse(), ...PERK_DRUMS];
-    const rows: { id: InstrumentId; name: string; color: number; pattern: Pattern }[] = [
-      ...drums.map((d) => ({ id: d, name: DRUM_DEFS[d].name, color: DRUM_DEFS[d].color, pattern: DRUM_DEFS[d].pattern })),
-      ...TOWER_TYPES.map((ty) => ({ id: ty, name: TOWER_DEFS[ty].name, color: TOWER_DEFS[ty].color, pattern: TOWER_DEFS[ty].patterns.base })),
+    const coreRows = [...song.core].reverse();
+    const rows: { id: string; name: string; color: number }[] = [
+      ...coreRows.map((l) => ({ id: l.id, name: l.name, color: l.color })),
+      ...TOWER_TYPES.map((ty) => ({ id: ty, name: TOWER_DEFS[ty].name, color: TOWER_DEFS[ty].color })),
     ];
+    // Beat group of each step, for the small gaps between beats.
+    const groupOf: number[] = [];
+    song.beats.forEach((len, g) => {
+      for (let i = 0; i < len; i++) groupOf.push(g);
+    });
     this.playhead = scene.add
-      .rectangle(left, trackY + 17, cellW + 2, rowH * rows.length + 4, 0xffffff, 0.14)
+      .rectangle(left, trackY + 17, cellW + 2, rowH * rows.length + 9, 0xffffff, 0.14)
       .setOrigin(0, 0)
       .setVisible(false);
     rows.forEach((row, r) => {
-      // A small gap between the core's drums and the towers.
-      const y = trackY + 19 + r * rowH + (r >= drums.length ? 5 : 0);
+      // A small gap between the core and the towers.
+      const y = trackY + 19 + r * rowH + (r >= coreRows.length ? 5 : 0);
       this.labels.set(
         row.id,
-        text(x, y, row.name.toUpperCase(), { fontFamily: MONO, fontSize: '10px', color: COLORS.dim }),
+        text(x, y, row.name.toUpperCase().slice(0, 9), { fontFamily: MONO, fontSize: '10px', color: COLORS.dim }),
       );
       const cells: Phaser.GameObjects.Rectangle[] = [];
-      for (let s = 0; s < STEPS_PER_BAR; s++) {
-        const hit = row.pattern[s] !== null;
-        const cx = left + s * (cellW + gap) + Math.floor(s / 4) * 3;
-        cells.push(
-          scene.add
-            .rectangle(cx + 1, y, cellW, rowH - 4, hit ? row.color : 0xffffff, hit ? 1 : 0.05)
-            .setOrigin(0, 0)
-            .setAlpha(hit ? STEP_ALPHA.off : 1),
-        );
+      for (let st = 0; st < spb; st++) {
+        const cx = left + st * (cellW + gap) + (groupOf[st] ?? 0) * 3;
+        cells.push(scene.add.rectangle(cx + 1, y, cellW, rowH - 4, 0xffffff, 0.05).setOrigin(0, 0));
       }
       this.cells.set(row.id, cells);
-      this.patterns.set(row.id, row.pattern);
+      this.steps.set(row.id, new Set());
       this.colors.set(row.id, row.color);
     });
 
@@ -159,35 +159,38 @@ export class Panel {
   }
 
   setStep(stepInBar: number): void {
-    const first = this.cells.get('kick')![stepInBar]!;
+    const first = this.cells.get(this.song.core[0]!.id)![stepInBar];
+    if (!first) return;
     this.playhead.setVisible(true).setX(first.x - 1);
   }
 
-  /** Show a different part on a row (an upgraded tower's pattern). */
-  setRowPattern(id: InstrumentId, pattern: Pattern): void {
-    if (this.patterns.get(id) === pattern) return;
-    this.patterns.set(id, pattern);
+  /** Which steps a row plays this bar. */
+  setRowSteps(id: string, steps: readonly number[]): void {
+    const prev = this.steps.get(id);
+    if (prev && prev.size === steps.length && steps.every((x) => prev.has(x))) return;
+    const set = new Set(steps);
+    this.steps.set(id, set);
     const color = this.colors.get(id)!;
     const alpha = STEP_ALPHA[this.rowStates.get(id) ?? 'off'];
-    this.cells.get(id)!.forEach((cell, s) => {
-      const hit = pattern[s] !== null;
+    this.cells.get(id)?.forEach((cell, st) => {
+      const hit = set.has(st);
       cell.setFillStyle(hit ? color : 0xffffff, hit ? 1 : 0.05).setAlpha(hit ? alpha : 1);
     });
   }
 
-  setRowState(id: InstrumentId, state: RowState): void {
+  setRowState(id: string, state: RowState): void {
     if (this.rowStates.get(id) === state) return;
     this.rowStates.set(id, state);
     const label = this.labels.get(id)!;
     const color = this.colors.get(id) ?? 0xffffff;
     label.setColor(state === 'on' ? hex(color) : state === 'idle' ? COLORS.muted : COLORS.dim);
-    const pattern = this.patterns.get(id)!;
-    this.cells.get(id)!.forEach((cell, s) => {
-      if (pattern[s] !== null && !this.scene.tweens.isTweening(cell)) cell.setAlpha(STEP_ALPHA[state]);
+    const steps = this.steps.get(id)!;
+    this.cells.get(id)!.forEach((cell, st) => {
+      if (steps.has(st) && !this.scene.tweens.isTweening(cell)) cell.setAlpha(STEP_ALPHA[state]);
     });
   }
 
-  flashStep(id: InstrumentId, stepInBar: number): void {
+  flashStep(id: string, stepInBar: number): void {
     const cell = this.cells.get(id)?.[stepInBar];
     if (!cell) return;
     const rest = STEP_ALPHA[this.rowStates.get(id) ?? 'off'];

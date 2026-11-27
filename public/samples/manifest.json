@@ -1,0 +1,405 @@
+{
+ "piano": {
+  "kind": "pitched",
+  "notes": {
+   "36": "piano/36.mp3",
+   "44": "piano/44.mp3",
+   "52": "piano/52.mp3",
+   "60": "piano/60.mp3",
+   "68": "piano/68.mp3",
+   "76": "piano/76.mp3",
+   "84": "piano/84.mp3",
+   "92": "piano/92.mp3"
+  }
+ },
+ "epiano": {
+  "kind": "pitched",
+  "notes": {
+   "36": "epiano/36.mp3",
+   "44": "epiano/44.mp3",
+   "52": "epiano/52.mp3",
+   "60": "epiano/60.mp3",
+   "68": "epiano/68.mp3",
+   "76": "epiano/76.mp3",
+   "84": "epiano/84.mp3"
+  }
+ },
+ "kalimba": {
+  "kind": "pitched",
+  "notes": {
+   "47": "kalimba/47.mp3",
+   "49": "kalimba/49.mp3",
+   "51": "kalimba/51.mp3",
+   "54": "kalimba/54.mp3",
+   "56": "kalimba/56.mp3",
+   "59": "kalimba/59.mp3",
+   "61": "kalimba/61.mp3",
+   "63": "kalimba/63.mp3",
+   "66": "kalimba/66.mp3",
+   "69": "kalimba/69.mp3",
+   "71": "kalimba/71.mp3"
+  }
+ },
+ "marimba": {
+  "kind": "pitched",
+  "notes": {
+   "36": "marimba/36.mp3",
+   "43": "marimba/43.mp3",
+   "47": "marimba/47.mp3",
+   "53": "marimba/53.mp3",
+   "60": "marimba/60.mp3",
+   "67": "marimba/67.mp3",
+   "71": "marimba/71.mp3",
+   "77": "marimba/77.mp3",
+   "84": "marimba/84.mp3"
+  }
+ },
+ "vibes": {
+  "kind": "pitched",
+  "notes": {
+   "41": "vibes/41.mp3",
+   "45": "vibes/45.mp3",
+   "52": "vibes/52.mp3",
+   "59": "vibes/59.mp3",
+   "65": "vibes/65.mp3",
+   "69": "vibes/69.mp3",
+   "76": "vibes/76.mp3"
+  }
+ },
+ "bowed": {
+  "kind": "pitched",
+  "notes": {
+   "45": "bowed/45.mp3",
+   "52": "bowed/52.mp3",
+   "55": "bowed/55.mp3",
+   "62": "bowed/62.mp3",
+   "69": "bowed/69.mp3",
+   "76": "bowed/76.mp3"
+  }
+ },
+ "glock": {
+  "kind": "pitched",
+  "notes": {
+   "67": "glock/67.mp3",
+   "72": "glock/72.mp3",
+   "79": "glock/79.mp3",
+   "84": "glock/84.mp3",
+   "92": "glock/92.mp3",
+   "96": "glock/96.mp3"
+  }
+ },
+ "violins": {
+  "kind": "pitched",
+  "notes": {
+   "43": "violins/43.mp3",
+   "47": "violins/47.mp3",
+   "50": "violins/50.mp3",
+   "54": "violins/54.mp3",
+   "57": "violins/57.mp3",
+   "60": "violins/60.mp3",
+   "64": "violins/64.mp3",
+   "67": "violins/67.mp3",
+   "71": "violins/71.mp3",
+   "74": "violins/74.mp3"
+  }
+ },
+ "cellos": {
+  "kind": "pitched",
+  "notes": {
+   "31": "cellos/31.mp3",
+   "35": "cellos/35.mp3",
+   "38": "cellos/38.mp3",
+   "41": "cellos/41.mp3",
+   "45": "cellos/45.mp3",
+   "48": "cellos/48.mp3",
+   "52": "cellos/52.mp3",
+   "55": "cellos/55.mp3",
+   "59": "cellos/59.mp3",
+   "62": "cellos/62.mp3",
+   "65": "cellos/65.mp3"
+  }
+ },
+ "pizz": {
+  "kind": "pitched",
+  "notes": {
+   "43": "pizz/43.mp3",
+   "45": "pizz/45.mp3",
+   "47": "pizz/47.mp3",
+   "50": "pizz/50.mp3",
+   "54": "pizz/54.mp3",
+   "57": "pizz/57.mp3",
+   "60": "pizz/60.mp3",
+   "64": "pizz/64.mp3",
+   "67": "pizz/67.mp3",
+   "71": "pizz/71.mp3",
+   "74": "pizz/74.mp3"
+  }
+ },
+ "flute": {
+  "kind": "pitched",
+  "notes": {
+   "52": "flute/52.mp3",
+   "57": "flute/57.mp3",
+   "60": "flute/60.mp3",
+   "64": "flute/64.mp3",
+   "69": "flute/69.mp3",
+   "72": "flute/72.mp3",
+   "76": "flute/76.mp3",
+   "81": "flute/81.mp3",
+   "84": "flute/84.mp3"
+  }
+ },
+ "conga": {
+  "kind": "perc",
+  "arts": {
+   "low": [
+    "conga/low1.mp3",
+    "conga/low2.mp3"
+   ],
+   "lowMute": [
+    "conga/lowMute1.mp3",
+    "conga/lowMute2.mp3"
+   ],
+   "open": [
+    "conga/open1.mp3",
+    "conga/open2.mp3"
+   ],
+   "slap": [
+    "conga/slap1.mp3",
+    "conga/slap2.mp3"
+   ],
+   "high": [
+    "conga/high1.mp3",
+    "conga/high2.mp3"
+   ],
+   "highSlap": [
+    "conga/highSlap1.mp3",
+    "conga/highSlap2.mp3"
+   ],
+   "ghost": [
+    "conga/ghost1.mp3",
+    "conga/ghost2.mp3"
+   ]
+  }
+ },
+ "bongo": {
+  "kind": "perc",
+  "arts": {
+   "high": [
+    "bongo/high1.mp3",
+    "bongo/high2.mp3"
+   ],
+   "highMute": [
+    "bongo/highMute1.mp3",
+    "bongo/highMute2.mp3"
+   ],
+   "low": [
+    "bongo/low1.mp3",
+    "bongo/low2.mp3"
+   ],
+   "lowMute": [
+    "bongo/lowMute1.mp3",
+    "bongo/lowMute2.mp3"
+   ],
+   "ghost": [
+    "bongo/ghost1.mp3",
+    "bongo/ghost2.mp3"
+   ]
+  }
+ },
+ "shaker": {
+  "kind": "perc",
+  "arts": {
+   "slap": [
+    "shaker/slap1.mp3",
+    "shaker/slap2.mp3"
+   ],
+   "up": [
+    "shaker/up1.mp3",
+    "shaker/up2.mp3"
+   ],
+   "down": [
+    "shaker/down1.mp3",
+    "shaker/down2.mp3"
+   ],
+   "roll": [
+    "shaker/roll1.mp3",
+    "shaker/roll2.mp3"
+   ]
+  }
+ },
+ "cajon": {
+  "kind": "perc",
+  "arts": {
+   "bass": [
+    "cajon/bass1.mp3",
+    "cajon/bass2.mp3"
+   ],
+   "slap": [
+    "cajon/slap1.mp3",
+    "cajon/slap2.mp3"
+   ],
+   "tip": [
+    "cajon/tip1.mp3",
+    "cajon/tip2.mp3"
+   ],
+   "ghost": [
+    "cajon/ghost1.mp3",
+    "cajon/ghost2.mp3"
+   ]
+  }
+ },
+ "clap": {
+  "kind": "perc",
+  "arts": {
+   "group": [
+    "clap/group1.mp3",
+    "clap/group2.mp3",
+    "clap/group3.mp3",
+    "clap/group4.mp3",
+    "clap/group5.mp3",
+    "clap/group6.mp3"
+   ],
+   "solo": [
+    "clap/solo1.mp3",
+    "clap/solo2.mp3"
+   ]
+  }
+ },
+ "darbuka": {
+  "kind": "perc",
+  "arts": {
+   "doum": [
+    "darbuka/doum1.mp3",
+    "darbuka/doum2.mp3"
+   ],
+   "tek": [
+    "darbuka/tek1.mp3",
+    "darbuka/tek2.mp3"
+   ],
+   "ka": [
+    "darbuka/ka1.mp3",
+    "darbuka/ka2.mp3"
+   ],
+   "slap": [
+    "darbuka/slap1.mp3",
+    "darbuka/slap2.mp3"
+   ],
+   "ghost": [
+    "darbuka/ghost1.mp3",
+    "darbuka/ghost2.mp3"
+   ]
+  }
+ },
+ "frame": {
+  "kind": "perc",
+  "arts": {
+   "low": [
+    "frame/low1.mp3",
+    "frame/low2.mp3"
+   ],
+   "lowMute": [
+    "frame/lowMute1.mp3",
+    "frame/lowMute2.mp3"
+   ],
+   "high": [
+    "frame/high1.mp3",
+    "frame/high2.mp3"
+   ],
+   "highMute": [
+    "frame/highMute1.mp3",
+    "frame/highMute2.mp3"
+   ]
+  }
+ },
+ "hihat": {
+  "kind": "perc",
+  "arts": {
+   "closed": [
+    "hihat/closed1.mp3",
+    "hihat/closed2.mp3"
+   ],
+   "soft": [
+    "hihat/soft1.mp3",
+    "hihat/soft2.mp3"
+   ],
+   "tight": [
+    "hihat/tight1.mp3",
+    "hihat/tight2.mp3"
+   ],
+   "open": [
+    "hihat/open1.mp3",
+    "hihat/open2.mp3"
+   ],
+   "loose": [
+    "hihat/loose1.mp3",
+    "hihat/loose2.mp3"
+   ]
+  }
+ },
+ "snare": {
+  "kind": "perc",
+  "arts": {
+   "hit": [
+    "snare/hit1.mp3",
+    "snare/hit2.mp3"
+   ],
+   "hard": [
+    "snare/hard1.mp3",
+    "snare/hard2.mp3"
+   ],
+   "ghost": [
+    "snare/ghost1.mp3",
+    "snare/ghost2.mp3"
+   ],
+   "stick": [
+    "snare/stick1.mp3",
+    "snare/stick2.mp3"
+   ],
+   "roll": [
+    "snare/roll1.mp3"
+   ]
+  }
+ },
+ "tamb": {
+  "kind": "perc",
+  "arts": {
+   "hit": [
+    "tamb/hit1.mp3"
+   ],
+   "shake": [
+    "tamb/shake1.mp3",
+    "tamb/shake2.mp3"
+   ]
+  }
+ },
+ "logdrum": {
+  "kind": "perc",
+  "arts": {
+   "d0": [
+    "logdrum/d01.mp3",
+    "logdrum/d02.mp3",
+    "logdrum/d03.mp3",
+    "logdrum/d04.mp3"
+   ],
+   "d1": [
+    "logdrum/d11.mp3",
+    "logdrum/d12.mp3",
+    "logdrum/d13.mp3",
+    "logdrum/d14.mp3"
+   ],
+   "d2": [
+    "logdrum/d21.mp3",
+    "logdrum/d22.mp3",
+    "logdrum/d23.mp3",
+    "logdrum/d24.mp3"
+   ],
+   "d3": [
+    "logdrum/d31.mp3",
+    "logdrum/d32.mp3",
+    "logdrum/d33.mp3",
+    "logdrum/d34.mp3"
+   ]
+  }
+ }
+}

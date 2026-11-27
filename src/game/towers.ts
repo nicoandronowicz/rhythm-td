@@ -1,9 +1,7 @@
 /**
- * Tower definitions as data. Adding a tower = an entry here, a stats section and a sound section
- * in tuning, and a voice in audio/instruments. Combat behaviour comes from the stats, not code.
+ * Tower definitions as data: the four gameplay roles. Stats live in tuning; what each role plays
+ * (patterns, notes, sound) comes from the song (music/songs). Combat behaviour comes from the stats, not code.
  */
-
-import { parsePattern, type Pattern } from '../music/patterns';
 
 export type TowerType = 'bass' | 'chords' | 'arp' | 'lead';
 
@@ -20,12 +18,6 @@ export interface TowerDef {
   shape: TowerShape;
   hotkey: string;
   target: TargetMode;
-  patterns: {
-    base: Pattern;
-    upgraded: Pattern;
-    /** Alternate part, unlocked by a reward. */
-    variant: Pattern;
-  };
 }
 
 export const TOWER_DEFS: Record<TowerType, TowerDef> = {
@@ -37,11 +29,6 @@ export const TOWER_DEFS: Record<TowerType, TowerDef> = {
     shape: 'diamond',
     hotkey: '1',
     target: 'area',
-    patterns: {
-      base: parsePattern('..x...x...x...x.'),
-      upgraded: parsePattern('..x..ox...x..ox.'),
-      variant: parsePattern('..xx..x...xx..x.'),
-    },
   },
   chords: {
     type: 'chords',
@@ -51,11 +38,6 @@ export const TOWER_DEFS: Record<TowerType, TowerDef> = {
     shape: 'square',
     hotkey: '2',
     target: 'area',
-    patterns: {
-      base: parsePattern('...x......x..x..'),
-      upgraded: parsePattern('...x..x...x..x..'),
-      variant: parsePattern('..x...x...x...x.'),
-    },
   },
   arp: {
     type: 'arp',
@@ -65,11 +47,6 @@ export const TOWER_DEFS: Record<TowerType, TowerDef> = {
     shape: 'triangle',
     hotkey: '3',
     target: 'single',
-    patterns: {
-      base: parsePattern('x.x.x.x.x.x.x.x.'),
-      upgraded: parsePattern('xxxxxxxxxxxxxxxx'),
-      variant: parsePattern('x.xxx.xxx.xxx.xx'),
-    },
   },
   lead: {
     type: 'lead',
@@ -79,11 +56,6 @@ export const TOWER_DEFS: Record<TowerType, TowerDef> = {
     shape: 'circle',
     hotkey: '4',
     target: 'single',
-    patterns: {
-      base: parsePattern('x......x..x.....'),
-      upgraded: parsePattern('x......x..x...x.'),
-      variant: parsePattern('x..x...x..x...x.'),
-    },
   },
 };
 

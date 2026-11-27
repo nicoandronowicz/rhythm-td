@@ -5,13 +5,18 @@ export const SCREEN = { width: 1280, height: 720 };
 /** Internal render scale so shapes and text stay sharp on retina screens. */
 export const RENDER_SCALE = 2;
 
-/** The board's top-left corner and cell size. Each level's map is centred in the board area. */
-export const GRID = { x: 24, y: 104, cell: 40, w: 880, h: 560 };
+/**
+ * The board's top-left corner, cell size and tower size. Each level's map is centred in the board area;
+ * bigger maps get smaller cells (40 px at most) so every map fits the same screen.
+ */
+export const GRID = { x: 24, y: 104, cell: 40, w: 880, h: 560, tower: 24 };
 
 /** Board area: left of the side panel, under the HUD. */
 const BOARD_AREA = { x: 24, y: 96, w: 900, h: 608 };
 
 export function setGridFor(layout: { cols: number; rows: number }): void {
+  GRID.cell = Math.min(40, Math.floor(BOARD_AREA.w / layout.cols), Math.floor(BOARD_AREA.h / layout.rows));
+  GRID.tower = Math.round(GRID.cell * 0.6);
   GRID.w = layout.cols * GRID.cell;
   GRID.h = layout.rows * GRID.cell;
   GRID.x = Math.round(BOARD_AREA.x + (BOARD_AREA.w - GRID.w) / 2);

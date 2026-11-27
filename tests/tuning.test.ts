@@ -14,7 +14,8 @@ function memoryStorage(): KeyValueStorage & { data: Map<string, string> } {
 
 describe('tuning', () => {
   it('ships the musical spec', () => {
-    expect(DEFAULT_TUNING.transport.bpm).toBe(124);
+    // Each song sets its own tempo and swing; tuning only offsets them.
+    expect(DEFAULT_TUNING.transport.tempo).toBe(0);
     expect(DEFAULT_TUNING.transport.swing).toBe(0);
   });
 
@@ -32,20 +33,20 @@ describe('tuning', () => {
 
   it('merges saved values, ignores junk and clamps to range', () => {
     const merged = mergeTuning(DEFAULT_TUNING, {
-      transport: { bpm: 128, swing: 'lots', nope: 3 },
-      mix: { kick: 999 },
+      transport: { tempo: 4, swing: 'lots', nope: 3 },
+      mix: { bass: 999 },
       bogus: { a: 1 },
     });
-    expect(merged.transport.bpm).toBe(128);
+    expect(merged.transport.tempo).toBe(4);
     expect(merged.transport.swing).toBe(DEFAULT_TUNING.transport.swing);
-    expect(merged.mix.kick).toBe(6);
-    expect(DEFAULT_TUNING.transport.bpm).toBe(124); // defaults untouched
+    expect(merged.mix.bass).toBe(12);
+    expect(DEFAULT_TUNING.transport.tempo).toBe(0); // defaults untouched
   });
 
   it('survives broken saved JSON', () => {
     const storage = memoryStorage();
-    storage.setItem('rhythm-td.tuning.v1', '{not json');
-    expect(new TuningStore(storage).get('transport.bpm')).toBe(124);
+    storage.setItem('rhythm-td.tuning.v2', '{not json');
+    expect(new TuningStore(storage).get('transport.tempo')).toBe(0);
   });
 
   it('saves, notifies, reloads and resets', () => {
@@ -53,12 +54,12 @@ describe('tuning', () => {
     const store = new TuningStore(storage);
     const seen: [string, number][] = [];
     store.subscribe((p, v) => seen.push([p, v]));
-    store.set('transport.bpm', 126);
-    expect(seen).toEqual([['transport.bpm', 126]]);
-    expect(new TuningStore(storage).get('transport.bpm')).toBe(126);
+    store.set('transport.tempo', 2);
+    expect(seen).toEqual([['transport.tempo', 2]]);
+    expect(new TuningStore(storage).get('transport.tempo')).toBe(2);
     store.reset();
-    expect(store.get('transport.bpm')).toBe(124);
-    expect(new TuningStore(storage).get('transport.bpm')).toBe(124);
+    expect(store.get('transport.tempo')).toBe(0);
+    expect(new TuningStore(storage).get('transport.tempo')).toBe(0);
   });
 
   it('snaps choice fields to a valid option', () => {
@@ -69,8 +70,8 @@ describe('tuning', () => {
 
   it('copies as JSON that loads back', () => {
     const store = new TuningStore(memoryStorage());
-    store.set('mix.hats', -20);
+    store.set('mix.arp', -10);
     const again = mergeTuning(DEFAULT_TUNING, JSON.parse(store.toJSON()));
-    expect(again.mix.hats).toBe(-20);
+    expect(again.mix.arp).toBe(-10);
   });
 });

@@ -1,0 +1,4 @@
+All samples in this folder are derived from CC0-1.0 (public domain) libraries by Versilian Studios:
+- Versilian Community Sample Library (VCSL): https://github.com/sgossner/VCSL
+- VSCO 2 Community Edition: https://github.com/sgossner/VSCO-2-CE
+Trimmed, levelled and converted to MP3 by scripts/build-samples.mjs.

@@ -1,11 +1,12 @@
-/** Core perk menu: opens next to the core, buy extra percussion. */
+/** Core perk menu: opens next to the core, buy the song's extra layers. */
 
 import Phaser from 'phaser';
-import { DRUM_DEFS, PERK_DRUMS, type PerkDrum } from '../game/core';
+import { perkLayers, type CoreLayerId } from '../game/core';
+import type { SongDef } from '../music/song';
 import { COLORS, FONT, MONO, RENDER_SCALE } from './layout';
 
 export interface PerkRowState {
-  perk: PerkDrum;
+  perk: CoreLayerId;
   price: number;
   status: 'buy' | 'pending' | 'playing';
   affordable: boolean;
@@ -16,13 +17,17 @@ const W = 220;
 
 export class PerkMenu {
   private container: Phaser.GameObjects.Container;
-  private rows: { perk: PerkDrum; bg: Phaser.GameObjects.Rectangle; price: Phaser.GameObjects.Text; rect: Phaser.Geom.Rectangle }[] = [];
+  private rows: { perk: CoreLayerId; bg: Phaser.GameObjects.Rectangle; price: Phaser.GameObjects.Text; rect: Phaser.Geom.Rectangle }[] = [];
   private x: number;
   private y: number;
   open = false;
 
-  constructor(scene: Phaser.Scene, anchor: Phaser.Geom.Rectangle) {
-    const h = 30 + PERK_DRUMS.length * ROW_H + 8;
+  private readonly count: number;
+
+  constructor(scene: Phaser.Scene, anchor: Phaser.Geom.Rectangle, song: SongDef) {
+    const perks = perkLayers(song);
+    this.count = perks.length;
+    const h = 30 + perks.length * ROW_H + 8;
     this.x = anchor.x - W - 8;
     this.y = Math.max(8, anchor.y + anchor.height / 2 - h / 2);
     const bg = scene.add.rectangle(0, 0, W, h, 0x121628, 0.98).setOrigin(0, 0).setStrokeStyle(1.5, 0x3b4370, 1);
@@ -33,11 +38,12 @@ export class PerkMenu {
       resolution: RENDER_SCALE,
     });
     const items: Phaser.GameObjects.GameObject[] = [bg, title];
-    PERK_DRUMS.forEach((perk, i) => {
+    perks.forEach((layer, i) => {
+      const perk = layer.id;
       const ry = 28 + i * ROW_H;
       const rowBg = scene.add.rectangle(6, ry, W - 12, ROW_H - 4, 0xffffff, 0.04).setOrigin(0, 0);
-      const dot = scene.add.circle(20, ry + (ROW_H - 4) / 2, 6, DRUM_DEFS[perk].color, 1);
-      const name = scene.add.text(34, ry + 7, DRUM_DEFS[perk].name, {
+      const dot = scene.add.circle(20, ry + (ROW_H - 4) / 2, 6, layer.color, 1);
+      const name = scene.add.text(34, ry + 7, layer.name, {
         fontFamily: FONT,
         fontSize: '13px',
         fontStyle: 'bold',
@@ -54,7 +60,7 @@ export class PerkMenu {
   }
 
   get bounds(): Phaser.Geom.Rectangle {
-    return new Phaser.Geom.Rectangle(this.x, this.y, W, 30 + PERK_DRUMS.length * ROW_H + 8);
+    return new Phaser.Geom.Rectangle(this.x, this.y, W, 30 + this.count * ROW_H + 8);
   }
 
   toggle(force?: boolean): void {
@@ -62,7 +68,7 @@ export class PerkMenu {
     this.container.setVisible(this.open);
   }
 
-  perkAt(x: number, y: number): PerkDrum | null {
+  perkAt(x: number, y: number): CoreLayerId | null {
     if (!this.open) return null;
     return this.rows.find((r) => r.rect.contains(x, y))?.perk ?? null;
   }

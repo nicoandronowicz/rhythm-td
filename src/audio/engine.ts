@@ -2,54 +2,41 @@
  * The audio engine owns the master clock.
  *
  * One repeating event on the Tone.js transport fires every 16th note, slightly ahead of time
- * (look-ahead). On that tick the current session's world advances one step and every resulting
- * sound is scheduled at the exact transport time of its step, plus swing and each instrument's
- * micro-timing (a laid-back clap, loose percussion).
+ * (look-ahead). On that tick the current session's world advances one step, the composer writes the
+ * step's notes, and every note is scheduled at the exact transport time of its step, plus swing and the
+ * part's own micro-timing.
  *
- * The engine lives for the whole page: `init` once on the first click, then `load` + `play` for each
- * level, `stop` when going back to the menu.
+ * The engine lives for the whole page: `init` once on the first click, then `prepare` (instruments
+ * and samples for the level's song) + `load` + `play` for each level, `stop` when going back to the menu.
  *
  * Visuals: one-off effects (pulses, shots, kills) go through Tone.Draw; a late one is simply skipped.
- * State the screen must never miss (step, enemies, who is playing, waves) is recorded with its
- * audio time and read by the scene every frame via `audible()`.
+ * State the screen must never miss is recorded with its audio time and read every frame via `audible()`.
  */
 
 import * as Tone from 'tone';
 import type { Session } from '../app/session';
 import type { Tuning } from '../config/tuning';
 import { tuning as store } from '../config/tuningStore';
-import type { DrumType } from '../game/core';
-import { INSTRUMENTS, type InstrumentId } from '../game/instruments';
-import { velocityFor } from '../game/sequencer';
+import type { CoreLayerId } from '../game/core';
+import type { CoachTrigger } from '../game/levels';
 import { TOWER_TYPES, type TowerType } from '../game/towers';
 import type { WaveStatus } from '../game/waves';
 import type { Attack, CoreMode, EnemyAttack, EnemySnapshot, LayerSound, StepResult } from '../game/world';
-import type { CoachTrigger } from '../game/levels';
-import type { HitKind } from '../music/patterns';
+import type { NoteEvent } from '../music/compose';
+import type { SongDef } from '../music/song';
 import { sixteenthSeconds, stepToPosition, swingOffset, ticksToStep, type GridPosition, type SwingGrid } from '../music/timing';
+import { loadGroup } from './bank';
 import { dbToGain } from './curves';
-import { ArpVoice } from './instruments/arp';
-import { BassVoice } from './instruments/bass';
-import { ChordsVoice } from './instruments/chords';
-import { ClapVoice } from './instruments/clap';
-import { FxVoice } from './instruments/fx';
-import { HatsVoice } from './instruments/hats';
-import { KickVoice } from './instruments/kick';
-import { LeadVoice } from './instruments/lead';
-import { PadVoice } from './instruments/pad';
-import { RimVoice } from './instruments/rim';
-import { ShakerVoice } from './instruments/shaker';
-import { StaticNoiseVoice } from './instruments/staticNoise';
+import { TransitionFx } from './fx';
 import { Mixer } from './mixer';
-import type { Voice } from './voice';
+import { createVoice, type PatchVoice } from './voices';
 
 /** What the listener hears at a step. */
 export interface AudibleState {
-  /** Audio time of the step. */
   time: number;
-  /** Seconds per 16th at the time. */
   stepSeconds: number;
   step: number;
+  stepsPerBar: number;
   pos: GridPosition;
   chord: string;
   layers: Record<TowerType, LayerSound>;
@@ -57,7 +44,7 @@ export interface AudibleState {
   enemies: EnemySnapshot[];
   waves: WaveStatus;
   core: CoreMode;
-  drums: Record<DrumType, number>;
+  coreHp: Record<CoreLayerId, number>;
   combos: StepResult['combos'];
   layerUpgraded: StepResult['layerUpgraded'];
   perksOwned: StepResult['perksOwned'];
@@ -69,8 +56,8 @@ export interface AudibleState {
 }
 
 export interface HitEvent {
-  instrument: InstrumentId;
-  kind: HitKind;
+  /** Layer id: a core layer, 'pad', or a tower role. */
+  layer: string;
   velocity: number;
   step: number;
 }
@@ -83,77 +70,36 @@ export interface EngineListener {
   onEnemyAttack?(e: EnemyAttack): void;
 }
 
-/** Where a tower layer's presence is heading. */
 interface PresenceTarget {
   cutoff: number;
   db: number;
 }
 
-export function createVoices(t: Readonly<Tuning>): Record<InstrumentId, Voice> {
-  return {
-    kick: new KickVoice(t),
-    clap: new ClapVoice(),
-    hats: new HatsVoice(),
-    bass: new BassVoice(t),
-    chords: new ChordsVoice(),
-    arp: new ArpVoice(),
-    lead: new LeadVoice(),
-    shaker: new ShakerVoice(),
-    rim: new RimVoice(),
-    openhat: new HatsVoice((x) => x.openhat.decay),
-    pad: new PadVoice(),
-  };
-}
-
-/** Micro-timing per instrument, seconds (positive = behind the grid). */
-function grooveOffset(id: InstrumentId, t: Readonly<Tuning>): number {
-  const g = t.groove;
-  const loose = () => ((Math.random() - 0.5) * 2 * g.loose) / 1000;
-  switch (id) {
-    case 'clap':
-      return g.clapLate / 1000 + loose() * 0.3;
-    case 'hats':
-    case 'openhat':
-      return g.hatsLate / 1000 + loose() * 0.3;
-    case 'shaker':
-    case 'rim':
-      return loose();
-    default:
-      return 0;
-  }
-}
-
 export class AudioEngine {
   private mixer!: Mixer;
-  private voices!: Record<InstrumentId, Voice>;
-  private noise!: Record<TowerType, StaticNoiseVoice>;
-  private fxVoice!: FxVoice;
+  private fx!: TransitionFx;
+  private voices = new Map<string, PatchVoice>();
   private listeners = new Set<EngineListener>();
   private ready = false;
   private session: Session | null = null;
-  /** Scheduled-but-maybe-not-yet-heard steps, oldest first. */
+  private song: SongDef | null = null;
   private timeline: AudibleState[] = [];
   private current: AudibleState | null = null;
-  /** Audio time each tower went live. */
   private liveAt = new Map<number, number>();
   private presence = new Map<TowerType, PresenceTarget>();
   private coreMode: CoreMode | null = null;
   private lifted = false;
   private ended = false;
-  /**
-   * Audio time the current run started. Ticks before it are left over from the previous run's clock
-   * (the transport can fire a few late ones after a stop) and must not reach the new world.
-   */
+  /** Audio time the current run started; earlier ticks are left over from the previous run. */
   private runStart = Infinity;
-  /** Coach triggers with the audio time they happen, never dropped (see `drainTriggers`). */
   private triggerQueue: { time: number; trigger: CoachTrigger }[] = [];
+  private rewardsSeen = 0;
 
   addListener(l: EngineListener): () => void {
     this.listeners.add(l);
     return () => this.listeners.delete(l);
   }
 
-  /** Tempo the transport is actually running at. */
   get bpm(): number {
     return Tone.getTransport().bpm.value;
   }
@@ -168,30 +114,53 @@ export class AudioEngine {
 
   /** Dev hook: runs before every step (the offline renderer uses it to play like a player). */
   beforeStep: ((step: number) => void) | null = null;
+  /** Dev: layers that make no sound (for measuring what each one costs). */
+  readonly muted = new Set<string>();
 
-  /** Must be called from a click/tap: browsers only allow audio after a user gesture. `offline` is for dev renders. */
+  /** Must be called from a click/tap: browsers only allow audio after a user gesture. */
   async init(opts: { offline?: boolean } = {}): Promise<void> {
     if (this.ready) return;
     if (!opts.offline) await Tone.start();
     if (!opts.offline) Tone.getContext().lookAhead = 0.1;
-    const t = store.current;
-    this.mixer = new Mixer(t);
-    this.voices = createVoices(t);
-    for (const id of INSTRUMENTS) this.voices[id].output.connect(this.mixer.layers[id].input);
-    this.noise = Object.fromEntries(TOWER_TYPES.map((ty) => [ty, new StaticNoiseVoice()])) as Record<TowerType, StaticNoiseVoice>;
-    for (const ty of TOWER_TYPES) this.noise[ty].output.connect(this.mixer.layers[ty].input);
-    this.fxVoice = new FxVoice();
-    this.fxVoice.output.connect(this.mixer.fx);
-    await this.mixer.ready();
-
-    if (!opts.offline) store.subscribe((path) => this.onTuningChange(path));
+    this.mixer = new Mixer();
+    this.fx = new TransitionFx();
+    this.fx.output.connect(this.mixer.fx);
+    if (!opts.offline) store.subscribe(() => this.applyMix());
     Tone.getTransport().scheduleRepeat((time) => this.tick(time), '16n', 0);
     this.ready = true;
+    // The crash and reverse cymbal in transitions use the hi-hat samples.
+    void loadGroup('hihat');
   }
 
-  /** Get ready to play a session from its first step. */
+  /** Build the song's instruments and load its samples. Call before `load` when the song changes. */
+  async prepare(song: SongDef): Promise<void> {
+    if (this.song === song) return;
+    this.stop();
+    for (const v of this.voices.values()) v.dispose();
+    this.voices.clear();
+    this.mixer.build(song);
+    const layers: [string, string][] = [
+      ...song.core.map((l) => [l.id, l.patch] as [string, string]),
+      ['pad', song.pad.patch],
+      ...TOWER_TYPES.map((r) => [r, song.parts[r].patch] as [string, string]),
+    ];
+    const banks = new Set<string>(['hihat']);
+    for (const [layer, patchId] of layers) {
+      const patch = song.patches[patchId];
+      if (!patch) throw new Error(`Song ${song.id}: no patch "${patchId}"`);
+      const voice = createVoice(patch);
+      voice.output.connect(this.mixer.layer(layer).input);
+      this.voices.set(`${layer}:${patchId}`, voice);
+      for (const b of voice.banks()) banks.add(b);
+    }
+    await Promise.all([...banks].map(loadGroup));
+    this.song = song;
+  }
+
+  /** Get ready to play a session from its first step (its song must be prepared). */
   load(session: Session): void {
     this.stop();
+    if (session.song !== this.song) throw new Error('Engine: prepare the song before loading the session');
     this.session = session;
     this.timeline = [];
     this.current = null;
@@ -202,13 +171,26 @@ export class AudioEngine {
     this.ended = false;
     this.runStart = Infinity;
     this.triggerQueue = [];
-    const t = session.audioTuning;
-    this.mixer.applyTuning(t);
+    this.rewardsSeen = 0;
+    const t = session.tuning;
+    this.applyMix();
     this.mixer.reset(t);
-    for (const id of INSTRUMENTS) this.voices[id].applyTuning(t);
     const now = Tone.now();
-    for (const ty of TOWER_TYPES) this.mixer.layers[ty].setPresence(t.engage.idleCutoff, t.engage.idle, 0.01, now);
-    Tone.getTransport().bpm.value = t.transport.bpm;
+    for (const ty of TOWER_TYPES) this.mixer.layer(ty).setPresence(t.engage.idleCutoff, t.engage.idle, 0.01, now);
+    Tone.getTransport().bpm.value = this.tempo(t);
+  }
+
+  private tempo(t: Readonly<Tuning>): number {
+    return Math.min(200, Math.max(50, (this.song?.bpm ?? 120) + t.transport.tempo));
+  }
+
+  private applyMix(): void {
+    const s = this.session;
+    if (!s || !this.song) return;
+    const t = s.tuning;
+    this.mixer.apply(t, s.world.mods, this.tempo(t));
+    const transport = Tone.getTransport();
+    if (Math.abs(transport.bpm.value - this.tempo(t)) > 0.01) transport.bpm.rampTo(this.tempo(t), 0.05);
   }
 
   play(): void {
@@ -219,28 +201,27 @@ export class AudioEngine {
     transport.start(this.runStart);
   }
 
-  /** Stop the clock (back to the menu or before a new level). */
   stop(): void {
     if (!this.ready) return;
     Tone.getTransport().stop();
     Tone.getDraw().cancel(0);
   }
 
-  /** Audio clock time the listener is hearing now. */
+  /** The live audio context (dev checks: playback stats). */
+  get rawContext(): BaseAudioContext {
+    return Tone.getContext().rawContext as unknown as BaseAudioContext;
+  }
+
   now(): number {
     return Tone.getContext().rawContext.currentTime;
   }
 
-  /** The latest scheduled step whose time has come. Null before the first step is heard. */
   audible(): AudibleState | null {
     const now = this.now();
-    while (this.timeline.length && this.timeline[0]!.time <= now) {
-      this.current = this.timeline.shift()!;
-    }
+    while (this.timeline.length && this.timeline[0]!.time <= now) this.current = this.timeline.shift()!;
     return this.current;
   }
 
-  /** Coach triggers whose time has come, in order. Unlike Tone.Draw events, these are never skipped. */
   drainTriggers(): CoachTrigger[] {
     const now = this.now();
     const out: CoachTrigger[] = [];
@@ -248,7 +229,6 @@ export class AudioEngine {
     return out;
   }
 
-  /** True once the bar a tower entered on is being heard. */
   isAudiblyLive(towerId: number): boolean {
     const at = this.liveAt.get(towerId);
     return at !== undefined && at <= this.now();
@@ -265,109 +245,74 @@ export class AudioEngine {
     if (!paused && transport.state !== 'started') transport.start('+0.05');
   }
 
-  private onTuningChange(path: string): void {
-    if (!this.session) return;
-    const t = this.session.audioTuning;
-    if (path.startsWith('transport.bpm') || path.endsWith('.bpm')) Tone.getTransport().bpm.rampTo(t.transport.bpm, 0.05);
-    this.mixer.applyTuning(t);
-    for (const id of INSTRUMENTS) this.voices[id].applyTuning(t);
-  }
-
   /** The 16th-note tick. `time` is the exact audio time of this step. */
   private tick(time: number): void {
     const session = this.session;
-    if (!session || time < this.runStart - 0.001) return;
+    const song = this.song;
+    if (!session || !song || time < this.runStart - 0.001) return;
     const transport = Tone.getTransport();
-    const t = session.audioTuning;
+    const t = session.tuning;
+    const spb = song.stepsPerBar;
     const step = ticksToStep(transport.getTicksAtTime(time), transport.PPQ);
-    const pos = stepToPosition(step);
+    const pos = stepToPosition(step, spb);
     const bpm = transport.bpm.value;
     const sixteenth = sixteenthSeconds(bpm);
     this.beforeStep?.(step);
 
-    const before = session.world.rewardsTaken.length;
-    const r = session.world.onStep(step, session.tuning);
-    // A reward that just landed can change the sound: re-apply.
-    if (session.world.rewardsTaken.length !== before) {
-      const a = session.audioTuning;
-      this.mixer.applyTuning(a);
-      for (const id of INSTRUMENTS) this.voices[id].applyTuning(a);
+    const world = session.world;
+    const r = world.onStep(step, t);
+    if (world.rewardsTaken.length !== this.rewardsSeen) {
+      this.rewardsSeen = world.rewardsTaken.length;
+      this.applyMix();
     }
     for (const tw of r.entered) this.liveAt.set(tw.id, time);
 
     // Mix moves: core resting/rising/active, Lift, each layer's presence and damage.
     this.applyCore(r.core, r.waves.nextWaveStep - step, time, sixteenth, t);
     this.applyLift(r.lifted, time, sixteenth);
-    const velocityScale = new Map<TowerType, number>();
     for (const ty of TOWER_TYPES) {
       const layer = r.layers[ty];
       this.applyPresence(ty, layer, r.lifted, time, sixteenth, t);
-      this.mixer.layers[ty].setDamage(layer.staticLevel, layer.muffleLevel, time, t);
-      const k = intensity(layer, t);
-      velocityScale.set(ty, layer.mode === 'fighting' ? 0.8 + 0.2 * k : 1);
+      this.mixer.layer(ty).setDamage(layer.staticLevel, layer.muffleLevel, time, t);
     }
 
-    // Arrangement moments.
     for (const ev of r.events) {
-      if (ev.kind === 'riser') this.fxVoice.riser(time, ev.steps * sixteenth);
-      else if (ev.kind === 'impact') this.fxVoice.impact(time);
-      else this.fxVoice.downlifter(time, ev.steps * sixteenth);
+      if (ev.kind === 'build') this.fx.build(time, ev.steps * sixteenth, sixteenth, true);
+      else if (ev.kind === 'impact') this.fx.impact(time, ev.big ?? true);
+      else this.fx.downlifter(time, ev.steps * sixteenth);
     }
 
-    const swing = swingOffset(step, t.transport.swing, t.transport.swingGrid as SwingGrid, bpm);
+    const swingAmount = Math.min(1, song.swing + t.transport.swing + world.mods.swing);
+    const swing = swingOffset(step, swingAmount, t.transport.swingGrid as SwingGrid, bpm);
     const crits = new Set(r.attacks.filter((a) => a.crit).map((a) => a.type));
-    const width = session.world.mods.width;
-    const hitEvents: HitEvent[] = [];
-    for (const hit of r.hits) {
-      const tower = (TOWER_TYPES as readonly string[]).includes(hit.instrument) ? (hit.instrument as TowerType) : null;
-      const kind = tower && crits.has(tower) ? 'accent' : hit.kind;
-      const human = hit.instrument === 'kick' || hit.instrument === 'pad' ? 1 : 1 + (Math.random() - 0.5) * 2 * t.groove.humanize;
-      const velocity =
-        velocityFor(kind, t.velocity) * (tower ? velocityScale.get(tower)! : 1) * (kind !== hit.kind ? 1.15 : 1) * human;
-      const at = time + swing + grooveOffset(hit.instrument, t);
-      if (hit.instrument === 'kick') {
-        // The whole track breathes with the kick; Sidechain makes chords and bass pump hard.
-        for (const ty of TOWER_TYPES) {
-          const depth = r.pump.has(ty) ? t.combos.sidechainPump : t.groove.pump;
-          this.mixer.layers[ty].duck(depth, sixteenth * 3, at);
-        }
-        this.mixer.layers.pad.duck(t.groove.pump * 1.4, sixteenth * 3.5, at);
+    const width = world.mods.width;
+
+    if (r.pumpHit) {
+      const at = time + swing;
+      const base = song.mix.pump.depth * t.groove.pump;
+      const release = sixteenth * song.mix.pump.release;
+      for (const id of this.mixer.layerIds) {
+        if (song.core.some((l) => l.id === id && l.pump)) continue;
+        const isTower = (TOWER_TYPES as readonly string[]).includes(id);
+        const combo = isTower && r.pump.has(id as TowerType);
+        const depth = combo ? t.combos.sidechainPump + world.mods.pump : id === 'pad' ? base * 1.3 : isTower ? base : base * 0.35;
+        this.mixer.layer(id).duck(depth, combo ? release * 1.2 : release, at);
       }
-      const ctx = {
-        kind: hit.kind,
-        velocity,
-        chord: r.harmony.chord,
-        nextChord: r.harmony.nextChord,
-        phraseBar: r.harmony.phraseBar,
-        wave: r.harmony.wave,
-        step,
-        sixteenth,
-        hitIndex: hit.hitIndex,
-        approach: hit.approach,
-        sustainBars: hit.sustainBars,
-        width,
-      };
-      this.voices[hit.instrument].trigger(at, ctx, t);
-      if (tower && r.layers[tower].staticLevel > 0.02) {
-        const level = Math.min(r.layers[tower].staticLevel, 1) * dbToGain(t.fx.maxNoise);
-        this.noise[tower].trigger(at, { ...ctx, velocity: level }, t);
-      }
-      // The lead's last note of a phrase gets thrown into the delay.
-      if (hit.instrument === 'lead' && hit.phraseEnd && r.layers.lead.mode === 'fighting' && t.groove.throw > 0) {
-        this.mixer.throwDelay('lead', t.groove.throw, at, sixteenth * 2);
-      }
-      hitEvents.push({ instrument: hit.instrument, kind: hit.kind, velocity, step });
     }
+
+    const hits: HitEvent[] = [];
+    for (const n of r.notes) this.playNote(n, time + swing, sixteenth, width, crits, r, t, hits);
 
     if ((r.gameOver || r.victory) && !this.ended) {
       this.ended = true;
-      if (r.gameOver) this.mixer.fadeOut(sixteenth * 32, time);
+      if (r.gameOver) this.mixer.tapeStop(sixteenth * 24, time);
     }
 
     this.timeline.push({
       time,
       stepSeconds: sixteenth,
       step,
+      stepsPerBar: spb,
       pos,
       chord: r.harmony.chord.name,
       layers: r.layers,
@@ -375,7 +320,7 @@ export class AudioEngine {
       enemies: r.enemies,
       waves: r.waves,
       core: r.core,
-      drums: r.drums,
+      coreHp: r.coreHp,
       combos: r.combos,
       layerUpgraded: r.layerUpgraded,
       perksOwned: r.perksOwned,
@@ -388,10 +333,10 @@ export class AudioEngine {
     if (this.timeline.length > 64) this.timeline.shift();
 
     const draw = Tone.getDraw();
-    if (hitEvents.length || r.attacks.length) {
+    if (hits.length || r.attacks.length) {
       draw.schedule(() => {
         for (const l of this.listeners) {
-          for (const e of hitEvents) l.onHit?.(e);
+          for (const e of hits) l.onHit?.(e);
           for (const a of r.attacks) l.onAttack?.(a);
         }
       }, time + swing);
@@ -408,25 +353,56 @@ export class AudioEngine {
     }
   }
 
-  /** Core: rests between waves, sweeps open over the bar before a wave, snaps open otherwise. */
+  private playNote(n: NoteEvent, at: number, sixteenth: number, width: number, crits: Set<TowerType>, r: StepResult, t: Readonly<Tuning>, hits: HitEvent[]): void {
+    const voice = this.voices.get(`${n.layer}:${n.patch}`);
+    if (!voice || this.muted.has(n.layer)) return;
+    const tower = (TOWER_TYPES as readonly string[]).includes(n.layer) ? (n.layer as TowerType) : null;
+    let vel = n.vel;
+    if (tower) {
+      const layer = r.layers[tower];
+      // Harder with more enemies near; a crit lands accented.
+      if (layer.mode === 'fighting') vel *= 0.85 + 0.15 * intensity(layer, t);
+      if (crits.has(tower) && n.attack) vel = Math.min(1, vel * 1.18);
+    }
+    const time = at + n.offset * sixteenth;
+    voice.play({
+      time,
+      notes: n.notes,
+      hold: Math.max(0.03, n.len * sixteenth * 0.96),
+      vel,
+      mod: n.mod,
+      art: n.art,
+      slide: n.slide,
+      strum: n.strum,
+      width,
+      lite: tower !== null && r.layers[tower].mode !== 'fighting',
+    });
+    if (tower && r.layers[tower].staticLevel > 0.02 && n.attack) {
+      const level = Math.min(r.layers[tower].staticLevel, 1) * dbToGain(t.fx.maxNoise);
+      this.fx.crackle(time, level, this.mixer.layer(tower).input);
+    }
+    // Long lead notes get thrown into the delay (dub-style echo tail).
+    if (n.layer === 'lead' && n.len >= 8 && r.layers.lead.mode === 'fighting' && t.groove.throw > 0) {
+      this.mixer.throwDelay('lead', t.groove.throw, time, sixteenth * 2);
+    }
+    if (n.attack || !tower) hits.push({ layer: n.layer, velocity: vel, step: r.step });
+  }
+
   private applyCore(mode: CoreMode, stepsToWave: number, time: number, sixteenth: number, t: Readonly<Tuning>): void {
     if (mode === this.coreMode) return;
     const previous = this.coreMode;
     this.coreMode = mode;
-    if (mode === 'resting') this.mixer.setCore(t.core.restCutoff, t.core.restVolume, previous === null ? 0.01 : sixteenth * 4, time);
+    if (mode === 'resting') this.mixer.setCore(t.core.restCutoff, t.core.restVolume, previous === null ? 0.01 : sixteenth * 8, time);
     else if (mode === 'rising') this.mixer.setCore(20000, 0, Math.max(1, stepsToWave) * sixteenth, time);
     else if (previous !== 'rising') this.mixer.setCore(20000, 0, 0.04, time);
   }
 
-  /** Lift: the pad swells and the core pushes a little louder for the lifted phrase. */
   private applyLift(lifted: boolean, time: number, sixteenth: number): void {
     if (lifted === this.lifted) return;
     this.lifted = lifted;
-    const pad = this.mixer.layers.pad;
-    pad.setPresence(20000, lifted ? 5 : 0, lifted ? sixteenth * 2 : sixteenth * 16, time);
+    this.mixer.layer('pad').setPresence(20000, lifted ? 4 : 0, lifted ? sixteenth * 2 : sixteenth * 16, time);
   }
 
-  /** Tower presence: open (brighter with more enemies) while fighting, distant when idle, wide open in a Lift. */
   private applyPresence(type: TowerType, layer: LayerSound, lifted: boolean, time: number, sixteenth: number, t: Readonly<Tuning>): void {
     if (layer.mode === 'none') return;
     const target: PresenceTarget =
@@ -442,14 +418,11 @@ export class AudioEngine {
     const beat = sixteenth * 4;
     const fromIdle = !prev || target.db > prev.db;
     const brighter = target.cutoff > (prev?.cutoff ?? 0);
-    // Coming in from idle fades over `openBeats`; getting brighter with more enemies takes a quarter beat;
-    // settling back down takes `closeBeats`.
     const ramp = fromIdle ? Math.max(0.03, t.engage.openBeats * beat) : brighter ? beat / 4 : Math.max(0.03, t.engage.closeBeats * beat);
-    this.mixer.layers[type].setPresence(target.cutoff, target.db, ramp, time);
+    this.mixer.layer(type).setPresence(target.cutoff, target.db, ramp, time);
   }
 }
 
-/** 0..1: how hard a fighting layer is pushed, by the number of enemies near it. */
 function intensity(layer: LayerSound, t: Readonly<Tuning>): number {
   if (layer.mode !== 'fighting' || layer.enemies <= 1) return 0;
   return Math.min(1, (layer.enemies - 1) / Math.max(1, t.engage.fullIntensity - 1));

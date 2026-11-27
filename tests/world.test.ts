@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_TUNING, type Tuning } from '../src/config/tuning';
 import { Board } from '../src/game/board';
 import { PROTOTYPE_MAP, type Cell } from '../src/game/grid';
-import { World, type StepResult } from '../src/game/world';
+import { TOWER_TYPES } from '../src/game/towers';
+import { ALL_FEATURES, World, type StepResult } from '../src/game/world';
+import { TEST_SONG } from './testSong';
 
 /** Tuning with no waves, so tests control every enemy. */
 function quiet(edit: (t: Tuning) => void = () => {}): Tuning {
@@ -14,7 +16,7 @@ function quiet(edit: (t: Tuning) => void = () => {}): Tuning {
 }
 
 function setup(t: Tuning, rng: () => number = () => 0.5) {
-  const world = new World(new Board(PROTOTYPE_MAP), t, rng);
+  const world = new World(new Board(PROTOTYPE_MAP), t, rng, { towers: TOWER_TYPES, features: ALL_FEATURES, song: TEST_SONG });
   let step = 0;
   const results: StepResult[] = [];
   const run = (n: number) => {
@@ -33,7 +35,7 @@ describe('drum core', () => {
     const t = quiet();
     const { results, run } = setup(t);
     run(16);
-    const at = (s: number) => results[s]!.hits.map((h) => h.instrument).filter((i) => i !== 'pad').sort();
+    const at = (s: number) => results[s]!.notes.map((h) => h.layer).filter((i) => i !== 'pad').sort();
     expect(at(0)).toEqual(['kick']);
     expect(at(2)).toEqual(['hats']);
     expect(at(4)).toEqual(['clap', 'kick']);
@@ -125,7 +127,7 @@ describe('towers play only while fighting', () => {
     const { world, run, results } = setup(t);
     world.place('arp', NEAR_START, t);
     run(48);
-    expect(results.every((r) => !r.hits.some((h) => h.instrument === 'arp'))).toBe(true);
+    expect(results.every((r) => !r.notes.some((h) => h.layer === 'arp'))).toBe(true);
     expect(results.every((r) => r.attacks.length === 0)).toBe(true);
   });
 
@@ -136,7 +138,7 @@ describe('towers play only while fighting', () => {
     run(17); // live from step 16
     world.addEnemy('static', 999, 2); // right beside the tower
     run(3); // steps 17, 18, 19
-    const arpSteps = results.filter((r) => r.hits.some((h) => h.instrument === 'arp')).map((r) => r.step);
+    const arpSteps = results.filter((r) => r.notes.some((h) => h.layer === 'arp')).map((r) => r.step);
     expect(arpSteps).toEqual([18]); // first even step after the enemy showed up
     expect(results[18]!.attacks).toHaveLength(1);
   });
@@ -150,7 +152,7 @@ describe('towers play only while fighting', () => {
     run(3); // 17..19, playing
     world.enemies.delete(e.id);
     run(20); // 20..39
-    const arpSteps = results.filter((r) => r.hits.some((h) => h.instrument === 'arp')).map((r) => r.step);
+    const arpSteps = results.filter((r) => r.notes.some((h) => h.layer === 'arp')).map((r) => r.step);
     expect(arpSteps).toEqual([18, 20, 22, 24, 26, 28, 30]);
     // Nothing to hit after the enemy left: sound only.
     expect(results.slice(20).every((r) => r.attacks.length === 0)).toBe(true);
@@ -166,7 +168,7 @@ describe('towers play only while fighting', () => {
     run(17);
     world.addEnemy('static', 999, 2);
     run(7); // 17..23
-    const arpSteps = results.filter((r) => r.hits.some((h) => h.instrument === 'arp')).map((r) => r.step);
+    const arpSteps = results.filter((r) => r.notes.some((h) => h.layer === 'arp')).map((r) => r.step);
     expect(arpSteps).toEqual([20, 22]);
   });
 
@@ -185,7 +187,7 @@ describe('towers play only while fighting', () => {
     const { world, run, results } = setup(t);
     world.place('arp', NEAR_START, t);
     run(32);
-    const idle = results.slice(16).flatMap((r) => r.hits.filter((h) => h.instrument === 'arp'));
+    const idle = results.slice(16).flatMap((r) => r.notes.filter((h) => h.layer === 'arp'));
     expect(idle).toHaveLength(8);
     expect(results.slice(16).every((r) => r.layers.arp.mode === 'idle')).toBe(true);
     expect(results.every((r) => r.attacks.length === 0)).toBe(true);
@@ -212,7 +214,7 @@ describe('towers play only while fighting', () => {
     world.addEnemy('static', 999, 2);
     run(2);
     const r = results[18]!;
-    expect(r.hits.filter((h) => h.instrument === 'arp')).toHaveLength(1);
+    expect(r.notes.filter((h) => h.layer === 'arp')).toHaveLength(1);
     expect(r.attacks).toHaveLength(2);
   });
 });
@@ -347,7 +349,7 @@ describe('enemies attack towers', () => {
     expect(r.tower.state).toBe('wreck');
     expect(results[16]!.enemyAttacks[0]!.destroyed).toBe(true);
     run(32);
-    expect(results.slice(17).some((x) => x.hits.some((h) => h.instrument === 'arp'))).toBe(false);
+    expect(results.slice(17).some((x) => x.notes.some((h) => h.layer === 'arp'))).toBe(false);
     expect(results.slice(17).some((x) => x.enemyAttacks.length > 0)).toBe(false);
   });
 
@@ -390,7 +392,7 @@ describe('the core', () => {
       return run(1);
     };
     leak();
-    expect(world.drums).toMatchObject({ hats: 1, clap: 2, kick: 2 });
+    expect(world.coreHp).toMatchObject({ hats: 1, clap: 2, kick: 2 });
     expect(leak().leaks[0]!.dropped).toBe('hats');
     leak();
     expect(leak().leaks[0]!.dropped).toBe('clap');
@@ -407,15 +409,15 @@ describe('the core', () => {
     const { world, run, results } = setup(t);
     world.addEnemy('static', 999, world.path.length - 0.01);
     run(16);
-    expect(results.slice(1).some((r) => r.hits.some((h) => h.instrument === 'hats'))).toBe(false);
-    expect(results.slice(1).some((r) => r.hits.some((h) => h.instrument === 'kick'))).toBe(true);
+    expect(results.slice(1).some((r) => r.notes.some((h) => h.layer === 'hats'))).toBe(false);
+    expect(results.slice(1).some((r) => r.notes.some((h) => h.layer === 'kick'))).toBe(true);
     world.addEnemy('static', 999, world.path.length - 0.01);
     world.addEnemy('static', 999, world.path.length - 0.01);
     run(1);
     expect(world.gameOver).toBe(true);
     const e = world.addEnemy('static', 999, 3);
     const after = run(16);
-    expect(after.hits).toEqual([]);
+    expect(after.notes).toEqual([]);
     expect(e.progress).toBe(3);
     expect(world.place('bass', FAR, t).ok).toBe(false);
   });
@@ -463,13 +465,13 @@ describe('harmony', () => {
     expect(at(0).chord.name).toBe('Am7');
     expect(at(2).chord.name).toBe('Fmaj7');
     // Wave 1 plays the first progression again, from its first chord.
-    expect(at(3)).toMatchObject({ progression: 0, phraseBar: 0, wave: 1 });
+    expect(at(3)).toMatchObject({ section: 0, barInSection: 0, wave: 1 });
     expect(at(3).chord.name).toBe('Am7');
     expect(at(5).chord.name).toBe('Fmaj7');
     // Wave 2 switches to the second progression.
-    expect(at(7)).toMatchObject({ progression: 1, phraseBar: 0, wave: 2 });
+    expect(at(7)).toMatchObject({ section: 1, barInSection: 0, wave: 2 });
     expect(at(9).chord.name).toBe('Dm7');
-    expect(at(11)).toMatchObject({ progression: 2, phraseBar: 0, wave: 3 });
+    expect(at(11)).toMatchObject({ section: 2, barInSection: 0, wave: 3 });
     expect(at(11).chord.name).toBe('Fmaj7');
   });
 
@@ -500,7 +502,7 @@ describe('upgrades', () => {
     expect(r.tower.upgraded).toBe(true);
     world.addEnemy('static', 1e9, 1.9).stunLeft = 999;
     run(16); // 33..48
-    const arpSteps = results.filter((x) => x.step > 32 && x.step < 48 && x.hits.some((h) => h.instrument === 'arp')).map((x) => x.step);
+    const arpSteps = results.filter((x) => x.step > 32 && x.step < 48 && x.notes.some((h) => h.layer === 'arp')).map((x) => x.step);
     expect(arpSteps.length).toBeGreaterThan(8); // 16ths, not 8ths
     const attacks = results.filter((x) => x.step > 32 && x.step < 48 && x.attacks.length).length;
     expect(attacks).toBe(arpSteps.length);
@@ -544,9 +546,9 @@ describe('core perks', () => {
     expect(world.buyPerk('shaker', t).ok).toBe(true);
     expect(world.buyPerk('shaker', t)).toEqual({ ok: false, reason: 'playing' });
     run(11); // to step 15
-    expect(results.some((r) => r.hits.some((h) => h.instrument === 'shaker'))).toBe(false);
+    expect(results.some((r) => r.notes.some((h) => h.layer === 'shaker'))).toBe(false);
     run(16);
-    expect(results.slice(16).filter((r) => r.hits.some((h) => h.instrument === 'shaker'))).toHaveLength(16);
+    expect(results.slice(16).filter((r) => r.notes.some((h) => h.layer === 'shaker'))).toHaveLength(16);
     const per = t.core.hpPerDrum;
     expect(world.coreHealth(t)).toEqual({ left: per * 4, total: per * 4 });
   });
@@ -558,7 +560,7 @@ describe('core perks', () => {
     run(1);
     world.addEnemy('static', 999, world.path.length - 0.01);
     expect(run(1).leaks[0]!.dropped).toBe('rim');
-    expect(world.drums.hats).toBe(1);
+    expect(world.coreHp.hats).toBe(1);
     expect(world.buyPerk('rim', t).ok).toBe(true);
     run(16);
     expect(world.hasPerk('rim')).toBe(true);
@@ -624,9 +626,9 @@ describe('pad and arrangement', () => {
     const t = quiet();
     const { run, results } = setup(t);
     run(16 * 6);
-    const padSteps = results.filter((r) => r.hits.some((h) => h.instrument === 'pad')).map((r) => r.step);
+    const padSteps = results.filter((r) => r.notes.some((h) => h.layer === 'pad')).map((r) => r.step);
     expect(padSteps).toEqual([0, 32, 64]);
-    expect(results[0]!.hits.find((h) => h.instrument === 'pad')!.sustainBars).toBe(2);
+    expect(results[0]!.notes.find((h) => h.layer === 'pad')!.len).toBe(32);
   });
 
   it('turnaround on the last bar of a phrase while the core is active: the kick drops its last beat', () => {
@@ -635,7 +637,7 @@ describe('pad and arrangement', () => {
     world.addEnemy('static', 1e9, 1).stunLeft = 1e9; // keeps the core active
     run(16 * 8);
     const kickInBar = (bar: number) =>
-      results.slice(bar * 16, bar * 16 + 16).filter((r) => r.hits.some((h) => h.instrument === 'kick')).length;
+      results.slice(bar * 16, bar * 16 + 16).filter((r) => r.notes.some((h) => h.layer === 'kick')).length;
     expect(kickInBar(6)).toBe(4);
     expect(kickInBar(7)).toBe(3);
   });
@@ -644,7 +646,7 @@ describe('pad and arrangement', () => {
     const t = quiet();
     const { run, results } = setup(t);
     run(16 * 8);
-    expect(results.slice(112, 128).filter((r) => r.hits.some((h) => h.instrument === 'kick')).length).toBe(4);
+    expect(results.slice(112, 128).filter((r) => r.notes.some((h) => h.layer === 'kick')).length).toBe(4);
   });
 
   it('the bass plays a passing note on its last hit before a chord change', () => {
@@ -653,7 +655,13 @@ describe('pad and arrangement', () => {
     world.place('bass', NEAR_START, t);
     world.addEnemy('static', 1e9, 1.9).stunLeft = 1e9;
     run(16 * 4);
-    const approaches = results.flatMap((r) => r.hits.filter((h) => h.instrument === 'bass' && h.approach).map(() => r.step));
+    // An approach note sits a half or whole step under the next chord's bass note (Am7 -> Fmaj7: E into F).
+    const approaches = results.flatMap((r) =>
+      r.notes
+        .filter((h) => h.layer === 'bass' && h.notes.length && r.harmony.chord.name !== r.harmony.next.name && r.harmony.barsLeft === 1)
+        .filter((h) => [1, 2].includes((r.harmony.next.bass - h.notes[0]! + 120) % 12))
+        .map(() => r.step),
+    );
     // Chords change every 2 bars: bar 1 -> 2 is a change (step 30), bar 3 -> 4 is a change (step 62).
     expect(approaches).toEqual([30, 62]);
   });
@@ -663,7 +671,7 @@ describe('pad and arrangement', () => {
     t.waves.firstDelayBars = 3;
     const { run, results } = setup(t);
     run(16 * 4);
-    const riser = results.findIndex((r) => r.events.some((e) => e.kind === 'riser'));
+    const riser = results.findIndex((r) => r.events.some((e) => e.kind === 'build'));
     expect(riser).toBe(32);
     expect(results[48]!.events.some((e) => e.kind === 'impact')).toBe(true);
   });
@@ -676,7 +684,7 @@ describe('levels', () => {
     const { tuningForLevel } = await import('../src/config/levelTuning');
     const level = levelById('level1');
     const t = tuningForLevel(DEFAULT_TUNING, level);
-    const world = new World(new Board(level.map), t, () => 0.5, rulesFor(level));
+    const world = new World(new Board(level.map), t, () => 0.5, rulesFor(level, TEST_SONG));
     expect(world.place('lead', { col: 2, row: 3 }, t)).toEqual({ ok: false, reason: 'locked' });
     const r = world.place('bass', { col: 2, row: 3 }, t);
     expect(r.ok).toBe(true);

@@ -13,6 +13,12 @@ describe('difficulty', () => {
     });
   }
 
+  for (const id of ['nb1', 'nb2', 'sr1', 'sr2', 'lt1', 'lt2'] as const) {
+    it(`chapter level ${id} is winnable by an active player`, () => {
+      expect(simulateLevel(id, { seed: 2 }).victory).toBe(true);
+    });
+  }
+
   it('level 5 punishes a player who barely builds', () => {
     expect(simulateLevel('level5', { seed: 1, skill: 0.4 }).victory).toBe(false);
   });

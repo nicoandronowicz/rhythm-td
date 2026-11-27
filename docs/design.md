@@ -1,6 +1,6 @@
 # Rhythm TD Design Doc v0.1
 
-Last updated Nov 25, 2026 (goal: a complete, evaluable prototype). Source of truth for design decisions.
+Last updated Nov 27, 2026 (music engine v2 and chapters). Source of truth for design decisions.
 
 ## Concept
 
@@ -50,11 +50,13 @@ Placing and upgrading can happen at any time, but nothing enters mid-bar. That r
 
 ## Systems
 
-Everything runs on one clock: 124 BPM, 4/4, a 16-step grid per bar. At that tempo one bar lasts about 1.9 seconds and a 16-bar phrase about 31 seconds, which is the length of a wave.
+Everything runs on one clock: a 16th-note grid. Each chapter's song sets its own tempo, meter and key (see "Chapters" below): 122 BPM 4/4 for chapter 1, up to 172 BPM, and 7/8 in chapter 3. A wave is 16 bars.
 
-Harmony for the prototype: A minor, alternating Am7 and Fmaj7 every 2 bars, so a wave is 4 cycles of the vamp. Melodic material comes from the current chord or the A minor pentatonic scale (A, C, D, E, G), which fits both chords. There is no background bed: the drum core is the floor, and towers add everything else.
+Harmony comes from the song: each wave plays one of the song's sections, a 16-bar chord progression with extended chords (9ths, sus, slash chords) and a composed 8-bar melody plus an 8-bar answer. There is no background bed: the core is the floor, and towers add everything else.
 
-### The drum core
+### The core
+
+From 27 Nov 2026 the core is whatever holds the chapter's song up: a 2-step kick in garage, a frame drum in the 7/8 chapter. Each song lists its core layers in drop-out order; the last one is the foundation, and losing it ends the run. The table below is chapter 1 (Afterhours, progressive house).
 
 The drums are not towers. They are the core: the thing you defend, sitting at the end of the path. Kick, clap and hats always play, so the track always has a beat, even between waves and even in a losing run. Between waves, with no enemies on the path, the core rests: low-passed and a bit quieter, ready. In the last bar before a wave its filter sweeps open, so the wave lands on the full beat.
 
@@ -187,7 +189,7 @@ The prototype answers one question: does placing towers feel like building a tra
 
 - On-beat timing inputs, drops and fills
 - Exporting a run as audio
-- Genre forks, campaign levels, map randomization and more enemies
+- Map randomization and more enemies (chapters, levels and genre variety are now in: see 27 Nov 2026)
 - Rare currency, saves and meta-progression
 - Background beds, desktop and mobile packaging, and final art
 
@@ -296,3 +298,19 @@ Decided on 25 Nov 2026, from Nico's goal ("a more complete prototype with traini
   - Richer synths: wider chord stabs, lead glide and vibrato, delay throws at phrase ends, a light tape saturation and a noise floor (vinyl and room) on the master.
 - **New mechanic, experimental: Lift.** Kills and combo hits fill a Lift meter. When it's full, press L (or the button) and the track lifts at the next 8-bar phrase: the core opens fully, the pad swells, the hats double, and all towers hit harder for 8 bars. It is quantized to the phrase, not a timing input; drops in the original sense stay out of scope.
 - **Level and track numbers live in `tuning.ts`** as one section per level, so they stay in the tuning panel.
+
+Decided on 27 Nov 2026, after Nico listened: "still sounds like a garbage looped track from a kids game... the bar loops too quickly, the sounds are too basic... maybe not all songs need a 4/4 kick... build bigger levels from different chapters". Answers to Claude's questions: chapters each with their own groove; free samples plus better synths; Claude writes original parts (no copying real tracks); go all the way before the next listen.
+
+- **Chapters (genre forks are in).** Four chapters, one song each, every song with its own tempo, meter, key, core and sound palette:
+  1. Afterhours: progressive house, F minor, 122. The five training levels.
+  2. Night Bus: UK garage / 2-step, C minor, 132, heavy shuffle. No four-on-the-floor; the 2-step kick is the foundation.
+  3. Seven Rivers: organic 7/8 (2+2+3), D dorian, 112. No kick at all; a frame drum is the foundation.
+  4. Low Tide: liquid drum & bass, E minor, 172.
+  Chapters 2 to 4 have two levels each on bigger maps (26×16 to 30×19, cells shrink to fit the same screen), 7 to 9 waves. Club Night (Endless) stays on Afterhours.
+- **The core is per song**: its layers, drop-out order and foundation come from the song. Perks are the song's three extra layers, priced by tier in tuning.
+- **Towers keep their four roles** (Bass slows, Chords stun, Arp fast and long, Lead heavy), but what they play is the song's: e.g. in Night Bus the Arp is vocal chops and the Lead a bell; in Seven Rivers they are a marimba and a flute.
+- **Long-form music instead of loops**: chords every 2 to 4 bars, 2-bar patterns, 8-bar melodies with an answer phrase, arpeggios whose note cycle runs against the bar (5 against 8, 3 against 7), filters that open across each wave, fills every 8 bars, a key lift in a later section.
+- **Breakdowns**: when the core rests between waves, the foundation drops out and the rest of the core is only gently filtered, then a build (riser, snare roll, reversed cymbal) and an impact bring it back. Replaces the heavy low-pass.
+- **Samples**: CC0 (public domain) instruments and percussion from Versilian Studios (VCSL and VSCO 2 CE): grand piano, FM electric piano, kalimba, marimba, vibraphone, glockenspiel, string sections, flute, congas, bongos, cajon, darbuka, frame drum, snare, hi-hat, claps, shaker, tambourine. About 6 MB, loaded per song.
+- **Balance stays independent of the music**: a tower's damage is per bar, split over however many notes its part plays, so a busier part sounds busier without being stronger.
+- **Songs are content files** (`src/music/songs/`): patterns, melodies, chords, instrument designs and the song's own mix. Gameplay numbers and global mix trims stay in `tuning.ts` and the panel.

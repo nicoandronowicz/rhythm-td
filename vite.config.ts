@@ -28,6 +28,11 @@ function saveRenders(): Plugin {
 export default defineConfig(({ command }) => ({
   base: command === 'build' ? '/rhythm-td/' : '/',
   plugins: [saveRenders()],
+  server: {
+    // Renders, docs, tests and raw samples are not part of the page: changing them must not reload it
+    // (a reload in the middle of an offline render throws the render away).
+    watch: { ignored: ['**/renders/**', '**/docs/**', '**/tests/**', '**/samples-src/**', '**/*.md', '**/scripts/**'] },
+  },
   build: {
     target: 'es2022',
     chunkSizeWarningLimit: 2000,

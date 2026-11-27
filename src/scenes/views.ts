@@ -5,7 +5,8 @@
 
 import Phaser from 'phaser';
 import type { Tower } from '../game/board';
-import { DRUM_DEFS, type DrumType } from '../game/core';
+import { baseLayers, perkLayers, type CoreLayerId } from '../game/core';
+import type { CoreLayerDef, SongDef } from '../music/song';
 import { ENEMY_DEFS } from '../game/enemies';
 import type { GridLayout } from '../game/grid';
 import type { Point } from '../game/path';
@@ -14,7 +15,6 @@ import type { EnemySnapshot } from '../game/world';
 import { COLORS, FONT, GRID, MONO, RENDER_SCALE } from './layout';
 import { drawShape } from './shapes';
 
-export const TOWER_SIZE = 24;
 
 export function toScreen(p: Point): Point {
   return { x: GRID.x + p.x * GRID.cell, y: GRID.y + p.y * GRID.cell };
@@ -23,18 +23,6 @@ export function toScreen(p: Point): Point {
 // ---------- core ----------
 
 /** Where each drum sits on the core block: base drums on the left, perks on the right. */
-const CORE_SLOTS: Partial<Record<DrumType, { col: number; row: number }>> = {
-  kick: { col: 0, row: 0 },
-  clap: { col: 0, row: 1 },
-  hats: { col: 0, row: 2 },
-  shaker: { col: 1, row: 0 },
-  rim: { col: 1, row: 1 },
-  openhat: { col: 1, row: 2 },
-};
-
-export function setCoreSlot(drum: DrumType, col: number, row: number): void {
-  CORE_SLOTS[drum] = { col, row };
-}
 
 interface Pad {
   circle: Phaser.GameObjects.Arc;
@@ -43,25 +31,35 @@ interface Pad {
 }
 
 export class CoreView {
-  private pads = new Map<DrumType, Pad>();
+  private pads = new Map<CoreLayerId, Pad>();
   private frame: Phaser.GameObjects.Graphics;
   private restShade: Phaser.GameObjects.Rectangle;
   readonly center: Point;
   readonly bounds: Phaser.Geom.Rectangle;
-  private dropped = new Set<DrumType>();
+  private dropped = new Set<CoreLayerId>();
   private x: number;
   private y: number;
   private w: number;
+  private h: number;
+
+  /** Where each layer sits: base layers in the left column (foundation on top), perks on the right. */
+  private readonly slots = new Map<CoreLayerId, { col: number; row: number; def: CoreLayerDef }>();
+  private readonly foundationId: CoreLayerId;
 
   constructor(
     private readonly scene: Phaser.Scene,
     layout: GridLayout,
+    song: SongDef,
   ) {
+    baseLayers(song).reverse().forEach((def, row) => this.slots.set(def.id, { col: 0, row, def }));
+    perkLayers(song).forEach((def, row) => this.slots.set(def.id, { col: 1, row, def }));
+    this.foundationId = song.core[song.core.length - 1]!.id;
     const k = layout.core;
     this.x = GRID.x + k.col * GRID.cell + 3;
     this.y = GRID.y + k.row * GRID.cell + 3;
     this.w = k.cols * GRID.cell - 6;
     const h = k.rows * GRID.cell - 6;
+    this.h = h;
     this.bounds = new Phaser.Geom.Rectangle(this.x, this.y, this.w, h);
     this.center = { x: this.x + this.w / 2, y: this.y + h / 2 };
     this.frame = scene.add.graphics().setDepth(4);
@@ -71,22 +69,22 @@ export class CoreView {
       .text(this.x + this.w / 2, this.y + 6, 'CORE', { fontFamily: MONO, fontSize: '10px', color: COLORS.muted, resolution: RENDER_SCALE })
       .setOrigin(0.5, 0)
       .setDepth(5);
-    for (const d of Object.keys(CORE_SLOTS) as DrumType[]) this.ensurePad(d);
+    for (const d of this.slots.keys()) this.ensurePad(d);
     this.restShade = scene.add.rectangle(this.x, this.y, this.w, h, COLORS.background, 0).setOrigin(0, 0).setDepth(6);
   }
 
-  private ensurePad(drum: DrumType): Pad | null {
+  private ensurePad(drum: CoreLayerId): Pad | null {
     const existing = this.pads.get(drum);
     if (existing) return existing;
-    const slot = CORE_SLOTS[drum];
+    const slot = this.slots.get(drum);
     if (!slot) return null;
     const colW = this.w / 2;
     const px = this.x + slot.col * colW + colW / 2 - 7;
-    const py = this.y + 34 + slot.row * 40;
-    const r = drum === 'kick' ? 10 : 8;
-    const circle = this.scene.add.circle(px, py, r, DRUM_DEFS[drum].color, 0.35).setDepth(5);
+    const py = this.y + 34 + slot.row * ((this.h - 34) / 3);
+    const r = drum === this.foundationId ? 10 : 8;
+    const circle = this.scene.add.circle(px, py, r, slot.def.color, 0.35).setDepth(5);
     const label = this.scene.add
-      .text(px, py + r + 2, DRUM_DEFS[drum].name.toLowerCase(), {
+      .text(px, py + r + 2, slot.def.name.toLowerCase(), {
         fontFamily: FONT,
         fontSize: '9px',
         color: COLORS.dim,
@@ -100,8 +98,8 @@ export class CoreView {
   }
 
   /** Health pips beside each drum (one per leak it can still take). Missing drums are hidden. */
-  setHealth(drums: Partial<Record<DrumType, number>>, perDrum: number, owned: (d: DrumType) => boolean = () => true): void {
-    for (const d of Object.keys(CORE_SLOTS) as DrumType[]) {
+  setHealth(drums: Partial<Record<CoreLayerId, number>>, perDrum: number, owned: (d: CoreLayerId) => boolean = () => true): void {
+    for (const d of this.slots.keys()) {
       const pad = this.ensurePad(d);
       if (!pad) continue;
       const has = owned(d);
@@ -120,7 +118,7 @@ export class CoreView {
         pad.circle.setAlpha(1).setScale(1);
       } else if (hp > 0 && this.dropped.has(d)) {
         this.dropped.delete(d);
-        pad.circle.setFillStyle(DRUM_DEFS[d].color, 0.35);
+        pad.circle.setFillStyle(this.slots.get(d)!.def.color, 0.35);
       }
     }
   }
@@ -130,7 +128,7 @@ export class CoreView {
     this.scene.tweens.add({ targets: this.restShade, fillAlpha: resting ? 0.45 : 0, duration: 400 });
   }
 
-  pulse(drum: DrumType, velocity: number): void {
+  pulse(drum: CoreLayerId, velocity: number): void {
     const pad = this.pads.get(drum);
     if (!pad || this.dropped.has(drum)) return;
     this.scene.tweens.add({ targets: pad.circle, scale: { from: 1 + 0.45 * velocity, to: 1 }, alpha: { from: 1, to: 0.35 }, duration: 180 });
@@ -172,17 +170,17 @@ export class TowerView {
     const def = TOWER_DEFS[tower.type];
     const p = toScreen({ x: tower.col + 0.5, y: tower.row + 0.5 });
     this.glow = scene.add.circle(0, 0, GRID.cell * 0.5, def.color, 1).setAlpha(0);
-    this.ring = scene.add.circle(0, 0, TOWER_SIZE / 2).setStrokeStyle(2, def.color, 1).setAlpha(0);
+    this.ring = scene.add.circle(0, 0, GRID.tower / 2).setStrokeStyle(2, def.color, 1).setAlpha(0);
     this.ring.isFilled = false;
     this.body = scene.add.graphics();
-    drawShape(this.body, def.shape, TOWER_SIZE, def.color);
+    drawShape(this.body, def.shape, GRID.tower, def.color);
     this.outline = scene.add.graphics();
-    drawShape(this.outline, def.shape, TOWER_SIZE + 8, def.color, 0.9, true);
+    drawShape(this.outline, def.shape, GRID.tower + 8, def.color, 0.9, true);
     this.wreckShape = scene.add.graphics().setVisible(false);
-    drawShape(this.wreckShape, def.shape, TOWER_SIZE, 0x3b4370, 1);
+    drawShape(this.wreckShape, def.shape, GRID.tower, 0x3b4370, 1);
     this.wreckShape.lineStyle(2, COLORS.background, 1);
     this.wreckShape.lineBetween(-8, -7, 1, 1).lineBetween(1, 1, -3, 10).lineBetween(1, 1, 9, -3);
-    this.muffleTint = scene.add.circle(0, 0, TOWER_SIZE / 2 + 3, 0x6f7bd6, 1).setAlpha(0);
+    this.muffleTint = scene.add.circle(0, 0, GRID.tower / 2 + 3, 0x6f7bd6, 1).setAlpha(0);
     this.hpBack = scene.add.rectangle(-12, -19, 24, 3, 0x000000, 0.6).setOrigin(0, 0.5).setVisible(false);
     this.hpBar = scene.add.rectangle(-12, -19, 24, 3, 0x5dffa8, 1).setOrigin(0, 0.5).setVisible(false);
     // Upgrade badge: two small chevrons above the tower.

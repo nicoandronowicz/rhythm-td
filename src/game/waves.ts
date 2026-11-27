@@ -6,7 +6,6 @@
  */
 
 import type { Tuning } from '../config/tuning';
-import { STEPS_PER_BAR } from '../music/patterns';
 import type { EnemyType } from './enemies';
 
 export interface Spawn {
@@ -44,8 +43,8 @@ export function hpMultiplier(waveNumber: number, t: WaveTuning): number {
 }
 
 /** Build a wave starting at `startStep`. Spawns land on the 16th grid and always fit inside the wave. */
-export function generateWave(waveNumber: number, startStep: number, t: WaveTuning): Wave {
-  const lengthSteps = Math.max(1, Math.round(t.waves.lengthBars)) * STEPS_PER_BAR;
+export function generateWave(waveNumber: number, startStep: number, t: WaveTuning, stepsPerBar = 16): Wave {
+  const lengthSteps = Math.max(1, Math.round(t.waves.lengthBars)) * stepsPerBar;
   const count = waveSize(waveNumber, t);
   // Spawns use at most the first half of the wave so the last enemies have time to walk.
   const window = Math.max(1, Math.floor(lengthSteps / 2));
@@ -82,14 +81,19 @@ export class WaveClock {
   private nextStart: number | null = null;
   private waveCount = 0;
 
+  constructor(
+    /** Steps per bar of the song (16 in 4/4). */
+    readonly stepsPerBar = 16,
+  ) {}
+
   /** Called for every step, in order. Returns enemies to spawn on this step. `maxWaves` > 0 stops after that many waves. */
   onStep(step: number, t: WaveTuning, maxWaves = 0): Spawn[] {
-    if (this.nextStart === null) this.nextStart = step + Math.max(0, Math.round(t.waves.firstDelayBars)) * STEPS_PER_BAR;
+    if (this.nextStart === null) this.nextStart = step + Math.max(0, Math.round(t.waves.firstDelayBars)) * this.stepsPerBar;
     if (step >= this.nextStart && (maxWaves <= 0 || this.waveCount < maxWaves)) {
       this.waveCount++;
-      this.current = generateWave(this.waveCount, this.nextStart, t);
+      this.current = generateWave(this.waveCount, this.nextStart, t, this.stepsPerBar);
       this.pending.push(...this.current.spawns);
-      const breakdown = Math.max(0, Math.round(t.waves.breakdownBars)) * STEPS_PER_BAR;
+      const breakdown = Math.max(0, Math.round(t.waves.breakdownBars)) * this.stepsPerBar;
       this.nextStart = this.current.endStep + breakdown;
     }
     const due = this.pending.filter((s) => s.step <= step);

@@ -401,10 +401,46 @@ button {
 /* level select */
 .levels {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 12px;
-  margin-top: 26px;
+  margin-top: 12px;
   text-align: left;
+}
+
+/* A long level list scrolls from the top instead of centring (centring would clip the first chapter). */
+.screen.tall {
+  place-items: start center;
+}
+
+.chapter {
+  margin-top: 30px;
+  text-align: left;
+}
+
+.chapter-head {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  column-gap: 12px;
+}
+
+.chapter-tag {
+  font: 600 11px var(--mono);
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.chapter-head h3 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.chapter-blurb {
+  grid-column: 1 / -1;
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  text-wrap: pretty;
 }
 
 .level-card {
@@ -412,8 +448,8 @@ button {
   display: grid;
   gap: 8px;
   align-content: start;
-  min-height: 150px;
-  padding: 18px 18px 16px;
+  min-height: 132px;
+  padding: 16px 16px 14px;
   background: rgba(18, 22, 40, 0.9);
   border: 1px solid var(--line);
   border-radius: 16px;

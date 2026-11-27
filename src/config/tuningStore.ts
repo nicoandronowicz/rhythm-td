@@ -4,7 +4,7 @@
 
 import { DEFAULT_TUNING, TUNING_FIELDS, type Tuning, type TuningField, type TuningPath } from './tuning';
 
-const STORAGE_KEY = 'rhythm-td.tuning.v1';
+const STORAGE_KEY = 'rhythm-td.tuning.v2';
 
 export interface KeyValueStorage {
   getItem(key: string): string | null;

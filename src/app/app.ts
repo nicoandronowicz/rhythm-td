@@ -10,7 +10,7 @@ import { GAME_SIZE, GameScene, type SceneData } from '../scenes/GameScene';
 import { COLORS } from '../scenes/layout';
 import { mountTuningPanel } from '../ui/tuningPanel';
 import { Session } from './session';
-import { hideScreens, setInGameChrome, showCoach, showEnd, showLevels, showPause, showRewards, showTitle } from './screens';
+import { hideScreens, setInGameChrome, showCoach, showEnd, showLevels, showLoading, showPause, showRewards, showTitle } from './screens';
 
 const COMPLETED_KEY = 'rhythm-td.completed.v1';
 
@@ -32,6 +32,8 @@ export class App {
   private completed = loadCompleted();
 
   constructor() {
+    // Dev only: a handle for in-browser checks (playthroughs, audio load).
+    if (import.meta.env.DEV) (window as unknown as { __app: App }).__app = this;
     this.game = new Phaser.Game({
       type: Phaser.AUTO,
       parent: 'game',
@@ -65,19 +67,26 @@ export class App {
     // ?level=level3 jumps straight into a level (handy for testing).
     const wanted = new URLSearchParams(window.location.search).get('level');
     const direct = LEVELS.find((l) => l.id === wanted);
-    if (direct) this.startLevel(direct.id);
+    if (direct) void this.startLevel(direct.id);
     else this.toLevels();
   }
 
   toLevels(): void {
     this.endRun();
-    showLevels(LEVELS, this.completed, (id) => this.startLevel(id));
+    showLevels(LEVELS, this.completed, (id) => void this.startLevel(id));
   }
 
-  startLevel(id: LevelId): void {
+  private startToken = 0;
+
+  async startLevel(id: LevelId): Promise<void> {
     this.endRun();
-    hideScreens();
+    const token = ++this.startToken;
     const session = new Session(levelById(id));
+    // A new song needs its instruments and samples (a few hundred KB) before the first beat.
+    showLoading(session.song.title, session.song.style);
+    await this.engine.prepare(session.song);
+    if (token !== this.startToken) return;
+    hideScreens(true);
     this.session = session;
     this.paused = false;
     this.ended = false;
@@ -89,7 +98,7 @@ export class App {
   }
 
   restart(): void {
-    if (this.session) this.startLevel(this.session.level.id);
+    if (this.session) void this.startLevel(this.session.level.id);
   }
 
   togglePause(): void {
@@ -133,7 +142,7 @@ export class App {
         hasNext: !!next,
       },
       {
-        next: () => next && this.startLevel(next.id),
+        next: () => void (next && this.startLevel(next.id)),
         retry: () => this.restart(),
         levels: () => this.toLevels(),
       },

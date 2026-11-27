@@ -45,7 +45,11 @@ export class Board {
   private pathKeys: Set<string>;
   private active = new Set<TowerType>();
 
-  constructor(readonly layout: GridLayout) {
+  constructor(
+    readonly layout: GridLayout,
+    /** Steps per bar of the song (16 in 4/4). */
+    readonly stepsPerBar = 16,
+  ) {
     this.pathKeys = new Set(pathCells(layout).map(cellKey));
   }
 
@@ -139,7 +143,7 @@ export class Board {
 
   /** Called for every 16th step, in order. Returns what changed if this step starts a bar. */
   onStep(step: number): BarChange | null {
-    if (!isBarStart(step)) return null;
+    if (!isBarStart(step, this.stepsPerBar)) return null;
     const entered: Tower[] = [];
     for (const t of this.towers.values()) {
       if (t.state === 'queued') {

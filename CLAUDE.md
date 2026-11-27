@@ -46,7 +46,7 @@ End every session with:
 
 ### 3. Everything tunable lives in one place
 
-- All numbers (BPM, damage, range, cost, HP, speed, spawn rates, effect strength, volumes, combo values) live in `src/config/tuning.ts`.
+- All gameplay numbers (damage, range, cost, HP, speed, spawn rates, effect strength, combo values) and global mix trims live in `src/config/tuning.ts`. A song's own musical content (tempo, patterns, patches, its mix) lives in its song file.
 - A tuning panel toggled with the `T` key edits them live. It saves to localStorage and has "Copy as JSON" and "Reset" buttons, so Nico can send you values that feel right.
 
 ### 4. Data-driven content
@@ -57,33 +57,22 @@ Towers, enemies, combos and rewards are defined as data (typed objects). Adding 
 
 Unit test the music module, pattern and quantization logic, next-bar queueing, combo detection, and wave generation. Run tests and a production build before every push.
 
-## Musical spec (prototype)
+## Musical spec (chapters, from 27 Nov 2026)
 
-- 124 BPM, 4/4, 16 steps per bar. A wave is 16 bars.
-- Key: A minor. 8-bar progressions (2 bars per chord), a new one each wave, cycling: Am7–Fmaj7–Cmaj7–G, Am7–Dm7–Fmaj7–Em7, Fmaj7–G–Am7–Am7, Am7–Em7–Fmaj7–G, Dm7–Am7–Fmaj7–G. The intro uses the first one.
-- Melodic notes come from the current chord or A minor pentatonic (A C D E G). Kill notes are dropped for now.
-- No background bed. The drum core always plays; towers add everything else.
+Each chapter is one song, written as data in `src/music/songs/`: tempo, meter, key, sections (chords + composed melody and answer), core layers, tower parts and instrument patches. The composer (`src/music/compose.ts`) turns a song plus the game state into notes; the engine only plays them.
 
-Drum core (always on, 16 steps, x = hit). Core perks add percussion layers (Shaker, Rim/perc, Open hat), each with its own health, dropping out before the hats:
+| Chapter | Song | Style | Key, tempo, meter | Foundation |
+| --- | --- | --- | --- | --- |
+| 1 (training) | Afterhours | Progressive house | F minor, 122, 4/4 | Kick |
+| 2 | Night Bus | UK garage, 2-step | C minor, 132, 4/4 shuffled | 2-step kick |
+| 3 | Seven Rivers | Organic, no kick | D dorian, 112, 7/8 (2+2+3) | Frame drum |
+| 4 | Low Tide | Liquid drum & bass | E minor, 172, 4/4 | Kick |
 
-| Drum | Pattern | Drops out |
-| --- | --- | --- |
-| Hats | `..x...x...x...x.` | first (after any added percussion) |
-| Clap | `....x.......x...` | second |
-| Kick | `x...x...x...x...` | last = game over |
-
-Tower patterns (drafts, tune by ear with Nico):
-
-| Tower | Base | Upgraded |
-| --- | --- | --- |
-| Bass | `..x...x...x...x.`, chord root | adds 16th pickups, root and octave |
-| Chords | `...x......x..x..`, house stab on the current chord | adds a stab |
-| Arp | `x.x.x.x.x.x.x.x.`, chord tones going up | all 16ths |
-| Lead | `x......x..x.....`, pluck hook from the pentatonic | adds a note |
-
-Sound: synthesized for now (the kick is accepted; samples may come later, ask first). Each drum and each tower type gets its own channel with an insert chain: noise/bitcrush and a low-pass filter, both neutral by default. Enemy effects drive those inserts.
-
-The mix has to sound good on laptop speakers and headphones. Aim for "Nico wants to record it", not "it technically plays".
+- A wave is 16 bars and plays one section; sections cycle, and a later one lifts the key.
+- Melodic notes come from the song's chords and key only (harmony.ts, melody.ts, compose.ts). Melodies are written as scale degrees; tests check no downbeat sits a half step against its chord.
+- Core layers drop out in the song's order; the last one is the foundation (losing it ends the run). The foundation sits out breakdowns.
+- Samples: CC0 only (VCSL, VSCO 2 CE), processed by `scripts/build-samples.mjs` into `public/samples`. Ask before adding any other source.
+- Tower damage is per bar (`refHits` in tuning): music density never changes balance.
 
 ## Game rules (prototype)
 
@@ -118,4 +107,4 @@ Nov 2026 goal (built together): training levels (5 + Endless) with a coach, a me
 
 ## Out of scope
 
-On-beat timing inputs, drops, run export, genre forks, a full campaign (beyond the training levels), map randomization, more enemies, rare currency, saves, background beds, desktop or mobile packaging, final art. See `docs/design.md`.
+On-beat timing inputs, drops, run export, a full campaign (beyond the four chapters), map randomization, more enemies, rare currency, saves, background beds, desktop or mobile packaging, final art. See `docs/design.md`.

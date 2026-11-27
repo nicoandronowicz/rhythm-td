@@ -3,29 +3,29 @@
  *
  * Order inside a step:
  *   1. on bar starts: queued towers, upgrades, perks and a chosen reward join; a Lift may start
- *   2. due enemies spawn; a new wave switches the progression
+ *   2. due enemies spawn; a new wave starts the song's next section
  *   3. each enemy either attacks a tower in reach (on its attack steps; it hovers in place) or moves;
- *      enemies past the end of the path hit the core and knock drums out
+ *      enemies past the end of the path hit the core and knock its layers out
  *   4. towers with an enemy in range start or keep playing at full presence; they hold to the bar end
- *   5. the core (drums and pad) and towers sound on their pattern steps (idle towers too, quietly);
- *      playing towers attack
+ *   5. the composer writes this step's notes (core, pad, towers; idle towers play quietly);
+ *      fighting towers attack on their main hits
  *   6. dead enemies pay their bounty and fill the Lift meter; noise and muffling on towers recover
  *   7. a cleared wave offers rewards, or wins the level
  */
 
 import type { Tuning } from '../config/tuning';
-import { stepAt, type HitKind, type Pattern } from '../music/patterns';
-import { chordInProgression, progressionForWave, type Chord } from '../music/theory';
+import { Composer, type ComposeInput, type Harmony, type NoteEvent, type PartState } from '../music/compose';
+import type { SongDef } from '../music/song';
+import { AFTERHOURS } from '../music/songs/afterhours';
 import { nextBarStart, stepToPosition } from '../music/timing';
 import { Board, type Tower } from './board';
 import { detectCombos, type ComboState } from './combos';
-import { BASE_DRUMS, DRUM_DEFS, DRUM_ORDER, LIFT_PATTERNS, PERK_DRUMS, TURNAROUND, type DrumType, type PerkDrum } from './core';
-import type { CoachTrigger, LevelDef, LevelFeatures } from './levels';
-import { emptyMods, offerRewards, rewardById, type Mods, type RewardId } from './rewards';
+import { coreLayer, perkCost, type CoreLayerId } from './core';
 import type { EnemyType } from './enemies';
 import { isCoreCell, type Cell } from './grid';
-import type { InstrumentId } from './instruments';
+import type { CoachTrigger, LevelDef, LevelFeatures } from './levels';
 import { distance, PathGeometry, type Point } from './path';
+import { emptyMods, offerRewards, rewardById, type Mods, type RewardId } from './rewards';
 import { TOWER_DEFS, TOWER_TYPES, type TowerType } from './towers';
 import { WaveClock, type WaveStatus } from './waves';
 
@@ -45,6 +45,7 @@ export interface TowerStats {
   hp: number;
   cost: number;
   damage: number;
+  refHits: number;
   range: number;
   stun: number;
   slow: number;
@@ -59,24 +60,13 @@ export function towerStats(t: Readonly<Tuning>, type: TowerType): TowerStats {
   return t[`${type}Tower`];
 }
 
-export interface SoundHit {
-  instrument: InstrumentId;
-  kind: HitKind;
-  /** Which hit of the bar this is (0 = first). Melodic voices use it to pick notes. */
-  hitIndex: number;
-  /** Bars to hold (the pad). */
-  sustainBars?: number;
-  /** A bass passing note into the next chord. */
-  approach?: boolean;
-  /** The last note of an 8-bar phrase (for delay throws). */
-  phraseEnd?: boolean;
-}
-
 /** Arrangement moments the audio engine dresses up. */
 export interface TrackEvent {
-  kind: 'riser' | 'impact' | 'downlifter';
+  kind: 'build' | 'impact' | 'downlifter';
   /** Length in 16ths. */
   steps: number;
+  /** A big moment (wave start, Lift) or a small one. */
+  big?: boolean;
 }
 
 /** How a tower layer sounds this step. */
@@ -92,13 +82,10 @@ export interface LayerSound {
   muffleLevel: number;
 }
 
-/** What the band is playing over: the chord, where we are in the 8-bar phrase, and which wave (for hook and arp shapes). */
-export interface Harmony {
-  chord: Chord;
-  /** The chord of the next bar (for passing notes). */
-  nextChord: Chord;
-  phraseBar: number;
-  progression: number;
+/** Where the song is: section, bar inside it, and its harmony. */
+export interface SongPosition extends Harmony {
+  section: number;
+  barInSection: number;
   wave: number;
 }
 
@@ -140,25 +127,30 @@ export interface EnemySnapshot {
 export interface StepResult {
   step: number;
   entered: Tower[];
-  hits: SoundHit[];
+  /** Every note of this step. */
+  notes: NoteEvent[];
+  /** A pump layer (the kick) hit on this step: the mix ducks. */
+  pumpHit: boolean;
   attacks: Attack[];
   enemyAttacks: EnemyAttack[];
   kills: { id: number; type: EnemyType; point: Point; bounty: number }[];
-  leaks: { id: number; type: EnemyType; dropped: DrumType | null }[];
+  leaks: { id: number; type: EnemyType; dropped: CoreLayerId | null }[];
   /** Tower ids playing at full presence on this step. */
   playingTowers: Set<number>;
   layers: Record<TowerType, LayerSound>;
   core: CoreMode;
-  drums: Record<DrumType, number>;
+  /** Leaks each core layer can still take (0 = dropped out or not bought). */
+  coreHp: Record<CoreLayerId, number>;
   enemies: EnemySnapshot[];
   waves: WaveStatus;
-  harmony: Harmony;
+  harmony: SongPosition;
+  energy: number;
   combos: ComboState;
   /** Tower layers that pump with the kick (Sidechain). */
   pump: Set<TowerType>;
   /** Which pattern each tower layer is playing. */
   layerUpgraded: Record<TowerType, boolean>;
-  perksOwned: Set<PerkDrum>;
+  perksOwned: Set<CoreLayerId>;
   events: TrackEvent[];
   /** For the training coach. */
   triggers: CoachTrigger[];
@@ -178,58 +170,59 @@ export const ALL_FEATURES: LevelFeatures = { upgrades: true, perks: true, combos
 export interface WorldRules {
   towers: readonly TowerType[];
   features: LevelFeatures;
+  song: SongDef;
 }
 
-export function rulesFor(level: LevelDef): WorldRules {
-  return { towers: level.towers, features: level.features };
+export function rulesFor(level: LevelDef, song: SongDef): WorldRules {
+  return { towers: level.towers, features: level.features, song };
 }
 
-export function hitIndexAt(pattern: Pattern, stepInBar: number): number {
-  let n = 0;
-  for (let i = 0; i < stepInBar; i++) if (pattern[i]) n++;
-  return n;
-}
+/** Bars in a phrase: a Lift starts on a phrase boundary. */
+const PHRASE = 8;
 
 export class World {
   readonly board: Board;
   readonly path: PathGeometry;
-  readonly waves = new WaveClock();
+  readonly waves: WaveClock;
   readonly enemies = new Map<number, Enemy>();
+  readonly song: SongDef;
+  readonly composer: Composer;
   money: number;
   leaked = 0;
   killed = 0;
-  /** Leaks each drum can still take. A drum at 0 has dropped out. */
-  readonly drums: Record<DrumType, number>;
+  /** Leaks each core layer can still take. A layer at 0 has dropped out (or is a perk not bought). */
+  readonly coreHp: Record<CoreLayerId, number>;
   gameOver = false;
   victory = false;
-  /** Perks bought (they may have dropped out since: check `drums`). */
-  readonly perksOwned = new Set<PerkDrum>();
+  /** Perks bought (they may have dropped out since: check `coreHp`). */
+  readonly perksOwned = new Set<CoreLayerId>();
   /** Perks bought this bar, joining on the next one. */
-  readonly perksPending = new Set<PerkDrum>();
+  readonly perksPending = new Set<CoreLayerId>();
   combos: ComboState = detectCombos([]);
   /** Waves fully survived (cleared). */
   wavesSurvived = 0;
-  /** Reward modifiers picked so far. */
   readonly mods: Mods = emptyMods();
   readonly rewardsTaken: RewardId[] = [];
-  /** Three rewards on offer after a cleared wave, until one is picked. */
   rewardOffer: RewardId[] | null = null;
   private rewardPending: RewardId | null = null;
-  /** Lift meter, 0..1. */
   hype = 0;
   liftPending = false;
   private liftEnd = -1;
   private liftReadyFired = false;
   private nextEnemyId = 1;
-  /** Step (exclusive) each tower keeps playing until. */
   private playUntil = new Map<number, number>();
-  /** Each wave plays its own progression from its first bar; the intro plays the first one. */
-  private progression = 0;
-  private progressionStartBar = 0;
+  /** The song section playing and the bar it started on. */
+  private section = -1;
+  private sectionStartBar = 0;
+  private sectionPasses = new Map<number, number>();
+  private pass = 0;
+  private lastPumpStep = -100;
   private clearedWaves = new Set<number>();
   private lastCore: CoreMode | null = null;
   private hadCombo = false;
   private firstKillFired = false;
+  /** The composer input of the last step, for previews. */
+  private lastInput: ComposeInput | null = null;
   readonly rules: WorldRules;
 
   constructor(
@@ -239,16 +232,23 @@ export class World {
     private readonly rng: () => number = Math.random,
     rules?: WorldRules,
   ) {
+    this.rules = rules ?? { towers: TOWER_TYPES, features: ALL_FEATURES, song: AFTERHOURS };
+    this.song = this.rules.song;
+    this.composer = new Composer(this.song);
     this.board = board;
+    this.waves = new WaveClock(this.song.stepsPerBar);
     this.path = new PathGeometry(board.layout);
     this.money = t.economy.startMoney;
     const hp = Math.max(1, Math.round(t.core.hpPerDrum));
-    this.drums = { hats: hp, clap: hp, kick: hp, shaker: 0, rim: 0, openhat: 0 };
-    this.rules = rules ?? { towers: TOWER_TYPES, features: ALL_FEATURES };
+    this.coreHp = Object.fromEntries(this.song.core.map((l) => [l.id, l.perk ? 0 : hp]));
   }
 
   get features(): LevelFeatures {
     return this.rules.features;
+  }
+
+  get stepsPerBar(): number {
+    return this.song.stepsPerBar;
   }
 
   // ---------- upgrades, perks, rewards, lift ----------
@@ -271,18 +271,19 @@ export class World {
     return { ok: true };
   }
 
-  perkCost(perk: PerkDrum, t: Readonly<Tuning>): number {
-    return t.core[`${perk}Cost`];
+  perkCost(perk: CoreLayerId, t: Readonly<Tuning>): number {
+    const layer = coreLayer(this.song, perk);
+    return layer ? perkCost(layer, t) : Infinity;
   }
 
   /** A perk is playing if bought and not knocked out. */
-  hasPerk(perk: PerkDrum): boolean {
-    return this.drums[perk] > 0;
+  hasPerk(perk: CoreLayerId): boolean {
+    return (this.coreHp[perk] ?? 0) > 0;
   }
 
-  /** Buy (or rebuy after it dropped out) a perk drum. It joins on the next bar with a full drum's health. */
-  buyPerk(perk: PerkDrum, t: Readonly<Tuning>): { ok: true } | { ok: false; reason: 'money' | 'playing' | 'locked' } {
-    if (!this.features.perks) return { ok: false, reason: 'locked' };
+  /** Buy (or rebuy after it dropped out) a perk layer. It joins on the next bar with full health. */
+  buyPerk(perk: CoreLayerId, t: Readonly<Tuning>): { ok: true } | { ok: false; reason: 'money' | 'playing' | 'locked' } {
+    if (!this.features.perks || !coreLayer(this.song, perk)?.perk) return { ok: false, reason: 'locked' };
     if (this.gameOver || this.hasPerk(perk) || this.perksPending.has(perk)) return { ok: false, reason: 'playing' };
     const cost = this.perkCost(perk, t);
     if (this.money < cost) return { ok: false, reason: 'money' };
@@ -291,7 +292,6 @@ export class World {
     return { ok: true };
   }
 
-  /** Pick one of the offered rewards; it takes effect on the next bar. */
   chooseReward(id: RewardId): boolean {
     if (!this.rewardOffer?.includes(id)) return false;
     this.rewardOffer = null;
@@ -313,15 +313,8 @@ export class World {
   /** Leaks the core can still take, and its total when everything owned is healthy. */
   coreHealth(t: Readonly<Tuning>): { left: number; total: number } {
     const per = Math.max(1, Math.round(t.core.hpPerDrum));
-    const owned: DrumType[] = [...BASE_DRUMS, ...PERK_DRUMS.filter((p) => this.perksOwned.has(p))];
-    return { left: owned.reduce((n, d) => n + Math.max(0, this.drums[d]), 0), total: owned.length * per };
-  }
-
-  /** The pattern a tower plays and attacks on: upgraded, else a reward's alternate part, else the base part. */
-  towerPattern(tower: Tower): Pattern {
-    const p = TOWER_DEFS[tower.type].patterns;
-    if (tower.upgraded) return p.upgraded;
-    return this.mods.variants.has(tower.type) ? p.variant : p.base;
+    const owned = this.song.core.filter((l) => !l.perk || this.perksOwned.has(l.id));
+    return { left: owned.reduce((n, l) => n + Math.max(0, this.coreHp[l.id] ?? 0), 0), total: owned.length * per };
   }
 
   towerCenter(c: Cell): Point {
@@ -351,7 +344,6 @@ export class World {
     return Math.ceil(towerStats(t, tower.type).cost * t.economy.repair);
   }
 
-  /** Repair a wreck: it comes back on the next bar. */
   repair(id: number, t: Readonly<Tuning>): { ok: true } | { ok: false; reason: 'money' | 'not-wreck' } {
     const tower = this.board.get(id);
     if (!tower || tower.state !== 'wreck' || this.gameOver) return { ok: false, reason: 'not-wreck' };
@@ -368,7 +360,6 @@ export class World {
     return this.board.move(id, cell);
   }
 
-  /** Removes a tower and refunds part of what was spent on it (nothing for a wreck). Returns the refund, or null if there was no tower. */
   remove(id: number, t: Readonly<Tuning>): number | null {
     const tower = this.board.remove(id);
     if (!tower) return null;
@@ -387,7 +378,6 @@ export class World {
     return e;
   }
 
-  /** Effective range: upgrades, Full band and the Wide mix reward extend it, muffling shrinks it. */
   rangeOf(tower: Tower, t: Readonly<Tuning>): number {
     const s = towerStats(t, tower.type);
     const base = s.range + (tower.upgraded ? s.upgradeRange : 0);
@@ -404,33 +394,31 @@ export class World {
     return (this.playUntil.get(towerId) ?? -1) > step;
   }
 
-  /** Drums still playing, in drop-out order. */
-  aliveDrums(): DrumType[] {
-    return DRUM_ORDER.filter((d) => this.drums[d] > 0);
+  /** Core layers still playing, in drop-out order. */
+  aliveCore(): CoreLayerId[] {
+    return this.song.core.filter((l) => (this.coreHp[l.id] ?? 0) > 0).map((l) => l.id);
   }
 
-  harmonyAt(bar: number, wave: number): Harmony {
-    const phraseBar = bar - this.progressionStartBar;
-    return {
-      chord: chordInProgression(this.progression, phraseBar),
-      nextChord: chordInProgression(this.progression, phraseBar + 1),
-      phraseBar: ((phraseBar % 8) + 8) % 8,
-      progression: this.progression,
-      wave,
-    };
+  /** Where the song is at a bar. */
+  position(bar: number, wave: number): SongPosition {
+    const barInSection = Math.max(0, bar - this.sectionStartBar);
+    return { ...this.composer.harmony(this.section, barInSection), section: this.section, barInSection, wave };
   }
 
   onStep(step: number, t: Readonly<Tuning>): StepResult {
-    const { stepInBar, bar } = stepToPosition(step);
+    const spb = this.stepsPerBar;
+    const { stepInBar, bar } = stepToPosition(step, spb);
     const empty = this.emptyLayers();
     const events: TrackEvent[] = [];
     const triggers: CoachTrigger[] = [];
 
     if (this.gameOver) {
+      const waves = this.waves.status(step);
       return {
         step,
         entered: [],
-        hits: [],
+        notes: [],
+        pumpHit: false,
         attacks: [],
         enemyAttacks: [],
         kills: [],
@@ -438,10 +426,11 @@ export class World {
         playingTowers: new Set(),
         layers: empty,
         core: 'active',
-        drums: { ...this.drums },
+        coreHp: { ...this.coreHp },
         enemies: [],
-        waves: this.waves.status(step),
-        harmony: this.harmonyAt(bar, this.waves.status(step).wave),
+        waves,
+        harmony: this.position(bar, waves.wave),
+        energy: 0,
         combos: this.combos,
         pump: new Set(),
         layerUpgraded: { bass: false, chords: false, arp: false, lead: false },
@@ -460,7 +449,7 @@ export class World {
     const barChange = this.board.onStep(step);
     if (barChange) {
       for (const p of this.perksPending) {
-        this.drums[p] = Math.max(1, Math.round(t.core.hpPerDrum));
+        this.coreHp[p] = Math.max(1, Math.round(t.core.hpPerDrum));
         this.perksOwned.add(p);
       }
       this.perksPending.clear();
@@ -470,27 +459,30 @@ export class World {
     if (this.combos.active.size > 0 && !this.hadCombo) triggers.push('combo');
     this.hadCombo = this.combos.active.size > 0;
 
-    // 2. Spawns; a new wave switches the progression.
+    // 2. Spawns; a new wave starts the song's next section.
     const waveBefore = this.waves.status(step).wave;
     for (const s of this.waves.onStep(step, t, t.waves.toWin)) this.addEnemy(s.type, s.hp);
     const waveNow = this.waves.status(step).wave;
     if (waveNow > waveBefore) {
-      this.progression = progressionForWave(waveNow);
-      this.progressionStartBar = bar;
-      events.push({ kind: 'impact', steps: 16 });
+      this.section = this.composer.sectionFor(waveNow);
+      this.sectionStartBar = bar;
+      this.pass = this.sectionPasses.get(this.section) ?? 0;
+      this.sectionPasses.set(this.section, this.pass + 1);
+      events.push({ kind: 'impact', steps: spb, big: true });
       triggers.push(`wave:${waveNow}`);
     }
-    const harmony = this.harmonyAt(bar, waveNow);
+    const pos = this.position(bar, waveNow);
 
-    // Lift: rises over the last bar of a phrase, starts on the next phrase.
+    // Lift: builds over the last bar of a phrase, starts on the next phrase.
+    const phraseBar = pos.barInSection % PHRASE;
     if (barChange && this.liftEnd > 0 && step >= this.liftEnd) this.liftEnd = -1;
-    if (barChange && this.liftPending && harmony.phraseBar === 7) events.push({ kind: 'riser', steps: 16 });
-    if (barChange && this.liftPending && harmony.phraseBar === 0) {
+    if (barChange && this.liftPending && phraseBar === PHRASE - 1) events.push({ kind: 'build', steps: spb });
+    if (barChange && this.liftPending && phraseBar === 0) {
       this.liftPending = false;
-      this.liftEnd = step + Math.max(1, Math.round(t.lift.bars)) * 16;
+      this.liftEnd = step + Math.max(1, Math.round(t.lift.bars)) * spb;
       this.hype = 0;
       this.liftReadyFired = false;
-      events.push({ kind: 'impact', steps: 16 });
+      events.push({ kind: 'impact', steps: spb, big: true });
       triggers.push('lift');
     }
     const lifted = this.isLifted(step);
@@ -531,66 +523,64 @@ export class World {
       const quantize = Math.max(1, Math.round(t.engage.quantize));
       if (!already && step % quantize !== 0) continue;
       const hold = Math.max(1, Math.round(t.engage.holdBars));
-      this.playUntil.set(tower.id, nextBarStart(step) + (hold - 1) * 16);
+      this.playUntil.set(tower.id, nextBarStart(step, spb) + (hold - 1) * spb);
     }
     const playingTowers = new Set(live.filter((tw) => this.isPlaying(tw.id, step)).map((tw) => tw.id));
 
-    // 5. Sound and attacks.
+    // 5. The composer writes the notes; towers attack on their main hits.
     const waves = this.waves.status(step);
     const core = lifted ? 'active' : this.coreMode(step, waves);
-    const turnaround = t.groove.turnarounds > 0 && core === 'active' && harmony.phraseBar === 7;
-    const hits: SoundHit[] = [];
-    if (!this.gameOver) {
-      for (const drum of this.aliveDrums()) {
-        const pattern = (lifted && LIFT_PATTERNS[drum]) || (turnaround && TURNAROUND[drum]) || DRUM_DEFS[drum].pattern;
-        const kind = stepAt(pattern, stepInBar);
-        if (kind) hits.push({ instrument: drum, kind, hitIndex: hitIndexAt(pattern, stepInBar) });
-      }
-      // The pad changes with the chord (every 2 bars).
-      if (stepInBar === 0 && (bar - this.progressionStartBar) % 2 === 0) {
-        hits.push({ instrument: 'pad', kind: 'normal', hitIndex: 0, sustainBars: 2 });
-      }
-    }
-
     const layers = empty;
-    const attacks: Attack[] = [];
-    const idleOn = t.engage.idle > -60;
     const layerUpgraded = { bass: false, chords: false, arp: false, lead: false };
-    const afterKick = this.drums.kick > 0 && (step % 4 === 1 || step % 4 === 2);
-    const chordChangeNext = harmony.nextChord !== harmony.chord;
+    const parts = {} as Record<TowerType, PartState>;
     for (const type of TOWER_TYPES) {
       const ofType = live.filter((tw) => tw.type === type);
-      if (ofType.length === 0 || this.gameOver) continue;
       const playing = ofType.filter((tw) => playingTowers.has(tw.id));
       const sounding = playing.length > 0 ? playing : ofType;
-      // The layer plays the upgraded part if any tower it's sounding for is upgraded.
       layerUpgraded[type] = sounding.some((tw) => tw.upgraded);
       const near = new Set<number>();
       for (const tw of playing) for (const e of targets.get(tw.id) ?? []) near.add(e.id);
+      const idleOn = t.engage.idle > -60;
+      const mode = ofType.length === 0 ? 'none' : playing.length > 0 ? 'fighting' : idleOn ? 'idle' : 'none';
       layers[type] = {
-        mode: playing.length > 0 ? 'fighting' : idleOn ? 'idle' : 'none',
+        mode,
         enemies: near.size,
-        staticLevel: Math.max(...ofType.map((tw) => tw.staticLevel)),
-        muffleLevel: Math.max(...ofType.map((tw) => tw.muffleLevel)),
+        staticLevel: ofType.length ? Math.max(...ofType.map((tw) => tw.staticLevel)) : 0,
+        muffleLevel: ofType.length ? Math.max(...ofType.map((tw) => tw.muffleLevel)) : 0,
       };
-      if (layers[type].mode === 'none') continue;
-      const p = TOWER_DEFS[type].patterns;
-      const pattern = layerUpgraded[type] ? p.upgraded : this.mods.variants.has(type) ? p.variant : p.base;
-      const kind = stepAt(pattern, stepInBar);
-      if (kind) {
-        const hitIndex = hitIndexAt(pattern, stepInBar);
-        const lastInBar = hitIndex === hitIndexAt(pattern, 16) - 1;
-        hits.push({
-          instrument: type,
-          kind,
-          hitIndex,
-          approach: type === 'bass' && t.groove.approach > 0 && chordChangeNext && lastInBar,
-          phraseEnd: harmony.phraseBar === 7 && lastInBar,
-        });
-      }
-      for (const tower of playing) {
-        if (!stepAt(this.towerPattern(tower), stepInBar)) continue;
-        const attack = this.attack(tower, targets.get(tower.id) ?? [], t, afterKick, lifted);
+      parts[type] = { mode, upgraded: layerUpgraded[type], variant: this.mods.variants.has(type) };
+    }
+    const energy = this.energyAt(step, core, waves, lifted);
+    const input: ComposeInput = {
+      step,
+      bar,
+      stepInBar,
+      section: this.section,
+      barInSection: pos.barInSection,
+      pass: this.pass,
+      wave: waveNow,
+      energy,
+      flowing: core === 'active',
+      lifted,
+      core: new Set(this.aliveCore()),
+      parts,
+    };
+    this.lastInput = input;
+    const notes = this.composer.compose(input);
+    const pumpIds = new Set(this.song.core.filter((l) => l.pump).map((l) => l.id));
+    const pumpHit = notes.some((n) => n.attack && pumpIds.has(n.layer));
+    if (pumpHit) this.lastPumpStep = step;
+    const afterPump = step - this.lastPumpStep === 1 || step - this.lastPumpStep === 2;
+
+    const attacks: Attack[] = [];
+    for (const type of TOWER_TYPES) {
+      if (layers[type].mode !== 'fighting') continue;
+      const part = this.song.parts[type];
+      for (const tower of live) {
+        if (tower.type !== type || !playingTowers.has(tower.id)) continue;
+        const st: PartState = { mode: 'fighting', upgraded: tower.upgraded, variant: this.mods.variants.has(type) };
+        if (!this.composer.mainHit(part, input, st)) continue;
+        const attack = this.attack(tower, targets.get(tower.id) ?? [], t, afterPump, lifted);
         if (attack) attacks.push(attack);
       }
     }
@@ -617,7 +607,7 @@ export class World {
         triggers.push('liftReady');
       }
     }
-    const recover = 1 / (Math.max(0.25, t.fx.recoverBars) * 16);
+    const recover = 1 / (Math.max(0.25, t.fx.recoverBars) * spb);
     const attacked = new Set(enemyAttacks.map((a) => a.towerId));
     for (const tw of this.board.all()) {
       if (attacked.has(tw.id)) continue;
@@ -629,7 +619,7 @@ export class World {
     if (waves.wave > 0 && waves.pending === 0 && this.enemies.size === 0 && !this.clearedWaves.has(waves.wave)) {
       this.clearedWaves.add(waves.wave);
       this.wavesSurvived = waves.wave;
-      events.push({ kind: 'downlifter', steps: 32 });
+      events.push({ kind: 'downlifter', steps: spb * 2 });
       triggers.push(`cleared:${waves.wave}`);
       if (t.waves.toWin > 0 && waves.wave >= t.waves.toWin) {
         this.victory = true;
@@ -639,9 +629,9 @@ export class World {
       }
     }
 
-    // The core sweeps open over the last bar before a wave: dress it with a riser.
+    // The core sweeps open over the bar before a wave: dress it with a build.
     const coreNow = this.coreMode(step, waves);
-    if (coreNow === 'rising' && this.lastCore !== 'rising') events.push({ kind: 'riser', steps: Math.max(1, waves.nextWaveStep - step) });
+    if (coreNow === 'rising' && this.lastCore !== 'rising') events.push({ kind: 'build', steps: Math.max(1, waves.nextWaveStep - step) });
     this.lastCore = coreNow;
 
     const enemies: EnemySnapshot[] = [...this.enemies.values()].map((e) => ({
@@ -661,7 +651,8 @@ export class World {
     return {
       step,
       entered: barChange?.entered ?? [],
-      hits,
+      notes,
+      pumpHit,
       attacks,
       enemyAttacks,
       kills,
@@ -669,10 +660,11 @@ export class World {
       playingTowers,
       layers,
       core,
-      drums: { ...this.drums },
+      coreHp: { ...this.coreHp },
       enemies,
       waves,
-      harmony,
+      harmony: pos,
+      energy,
       combos: this.combos,
       pump,
       layerUpgraded,
@@ -687,15 +679,34 @@ export class World {
     };
   }
 
+  /** Steps a layer (core layer id, 'pad' or tower role) plays in the current bar, for the track view. */
+  previewSteps(layer: string): number[] {
+    const inp = this.lastInput;
+    if (!inp) return [];
+    const role = (TOWER_TYPES as readonly string[]).includes(layer) ? (layer as TowerType) : null;
+    const part = role ? this.song.parts[role] : layer === 'pad' ? this.song.pad : coreLayer(this.song, layer);
+    if (!part) return [];
+    const st = role ? { ...inp.parts[role], mode: 'fighting' as const } : undefined;
+    return this.composer.barPreview(part, { ...inp, stepInBar: 0 }, st);
+  }
+
+  /** How hard the track is pushing: resting low, building, a wave rising as it goes, a Lift at full. */
+  private energyAt(step: number, core: CoreMode, waves: WaveStatus, lifted: boolean): number {
+    if (lifted) return 1;
+    if (core === 'resting') return 0.22;
+    if (core === 'rising') return 0.5;
+    const into = waves.phase === 'wave' ? (step - waves.waveStartStep) / Math.max(1, waves.nextWaveStep - waves.waveStartStep) : 1;
+    return Math.min(0.95, 0.6 + 0.25 * Math.min(1, into) + 0.1 * Math.min(1, this.enemies.size / 10));
+  }
+
   /** Resting once the wave has fully spawned and nobody is on the path; rising in the bar before the next wave. */
   coreMode(step: number, waves: WaveStatus): CoreMode {
     if (this.waves.pendingSpawns > 0 || this.enemies.size > 0) return 'active';
     if (this.victory) return 'active';
     const toNext = waves.nextWaveStep - step;
-    return toNext > 0 && toNext <= 16 ? 'rising' : 'resting';
+    return toNext > 0 && toNext <= this.stepsPerBar ? 'rising' : 'resting';
   }
 
-  /** Just enough of a level for reward availability checks. */
   private levelLike(): LevelDef {
     return { towers: this.rules.towers, features: this.rules.features } as LevelDef;
   }
@@ -710,10 +721,11 @@ export class World {
         tw.maxHp = towerStats(t, tw.type).hp;
         this.board.repair(tw.id);
       }
+      // Restore one leak, foundation first.
       const per = Math.max(1, Math.round(t.core.hpPerDrum));
-      const order: DrumType[] = ['kick', 'clap', 'hats', ...PERK_DRUMS.filter((p) => this.perksOwned.has(p))];
-      const drum = order.find((d) => this.drums[d] < per);
-      if (drum) this.drums[drum]++;
+      const order = [...this.song.core].reverse().filter((l) => !l.perk || this.perksOwned.has(l.id));
+      const layer = order.find((l) => (this.coreHp[l.id] ?? 0) < per);
+      if (layer) this.coreHp[layer.id]!++;
     }
   }
 
@@ -722,25 +734,25 @@ export class World {
     return { bass: none(), chords: none(), arp: none(), lead: none() };
   }
 
-  /** Knock `damage` leaks off the core, top drum first. Returns the drum that dropped, if any. */
-  private hitCore(damage: number): DrumType | null {
-    let dropped: DrumType | null = null;
+  /** Knock `damage` leaks off the core, top layer first. Returns the layer that dropped, if any. */
+  private hitCore(damage: number): CoreLayerId | null {
+    let dropped: CoreLayerId | null = null;
     let left = Math.max(0, Math.round(damage));
+    const foundationId = this.song.core[this.song.core.length - 1]!.id;
     while (left > 0) {
-      const drum = this.aliveDrums()[0];
-      if (!drum) break;
-      this.drums[drum]--;
+      const layer = this.aliveCore()[0];
+      if (!layer) break;
+      this.coreHp[layer]!--;
       left--;
-      if (this.drums[drum] === 0) {
-        dropped = drum;
-        if (drum === 'kick') this.gameOver = true;
+      if (this.coreHp[layer] === 0) {
+        dropped = layer;
+        if (layer === foundationId) this.gameOver = true;
       }
     }
-    if (this.aliveDrums().length === 0) this.gameOver = true;
+    if (this.aliveCore().length === 0) this.gameOver = true;
     return dropped;
   }
 
-  /** The nearest standing tower in reach, if this is one of the enemy's attack steps. */
   private enemyTarget(e: Enemy, standing: Tower[], step: number, t: Readonly<Tuning>): Tower | null {
     const s = t[e.type];
     if (e.stunLeft > 0 || (s.damage <= 0 && s.effect <= 0)) return null;
@@ -777,22 +789,26 @@ export class World {
     return { enemyId: e.id, type: e.type, towerId: tower.id, from: this.enemyPoint(e), destroyed };
   }
 
-  /** Cells an enemy moves on its next step. */
+  /** Cells an enemy moves on its next step (speed is in cells per beat = 4 steps). */
   private moveFor(e: Enemy, t: Readonly<Tuning>): number {
     if (e.stunLeft > 0) return 0;
     const base = t[e.type].speed / 4;
     return e.slowLeft > 0 ? base * (1 - e.slowAmount) : base;
   }
 
-  private attack(tower: Tower, inRange: Enemy[], t: Readonly<Tuning>, afterKick: boolean, lifted: boolean): Attack | null {
+  private attack(tower: Tower, inRange: Enemy[], t: Readonly<Tuning>, afterPump: boolean, lifted: boolean): Attack | null {
     const alive = inRange.filter((e) => e.hp > 0);
     if (alive.length === 0) return null;
     const stats = towerStats(t, tower.type);
     const combos = this.combos.byTower.get(tower.id);
-    const sidechain = afterKick && !!combos?.has('sidechain');
+    const sidechain = afterPump && !!combos?.has('sidechain');
     const crit = !!combos?.has('callResponse') && tower.type === 'lead' && this.rng() < t.combos.callCrit + this.mods.critChance;
+    // Damage per bar stays what tuning says, however many notes the song's part plays.
+    const density = this.composer.density(this.song.parts[tower.type]);
+    const perHit = density > 0 ? Math.max(1, stats.refHits) / density : 1;
     const damage =
       stats.damage *
+      perHit *
       (1 + this.mods.damage[tower.type]) *
       (tower.upgraded ? stats.upgradeDamage : 1) *
       (sidechain ? t.combos.sidechainBoost + this.mods.sidechainBoost : 1) *
@@ -821,3 +837,4 @@ export class World {
     };
   }
 }
+

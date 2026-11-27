@@ -14,17 +14,17 @@ import type { AudibleState, AudioEngine } from '../audio/engine';
 import { Coach } from '../game/coach';
 import type { CoachTrigger } from '../game/levels';
 import { COMBO_DEFS, type ComboState } from '../game/combos';
-import { BASE_DRUMS, DRUM_DEFS, isPerk, PERK_DRUMS, type DrumType } from '../game/core';
+import { perkLayers, type CoreLayerId } from '../game/core';
 import { ENEMY_DEFS } from '../game/enemies';
 import { isCoreCell, type Cell } from '../game/grid';
 import { TOWER_DEFS, TOWER_TYPES, type TowerType } from '../game/towers';
 import { towerStats, type World } from '../game/world';
-import { Hud } from './hud';
+import { beatStart, Hud } from './hud';
 import { COLORS, GRID, MONO, RENDER_SCALE, SCREEN, setGridFor } from './layout';
 import { Panel } from './panel';
 import { PerkMenu } from './perkMenu';
 import { drawShape } from './shapes';
-import { CoreView, Effects, EnemyView, TOWER_SIZE, TowerView, toScreen } from './views';
+import { CoreView, Effects, EnemyView, TowerView, toScreen } from './views';
 
 const DRAG_THRESHOLD = 6;
 
@@ -68,6 +68,10 @@ export class GameScene extends Phaser.Scene {
   private endAt: number | null = null;
   private endShown = false;
   private lastStep = -1;
+  private previewBar = -1;
+  private get coreIds(): ReadonlySet<string> {
+    return new Set(this.world.song.core.map((l) => l.id));
+  }
 
   constructor() {
     super('game');
@@ -90,6 +94,7 @@ export class GameScene extends Phaser.Scene {
     this.endAt = null;
     this.endShown = false;
     this.lastStep = -1;
+    this.previewBar = -1;
     setGridFor(this.world.board.layout);
   }
 
@@ -104,14 +109,14 @@ export class GameScene extends Phaser.Scene {
     this.input.mouse?.disableContextMenu();
 
     this.drawBoard();
-    this.core = new CoreView(this, this.world.board.layout);
-    this.hud = new Hud(this, this.world.features.lift, () => this.lift());
-    this.panel = new Panel(this, this.world.rules.towers);
+    this.core = new CoreView(this, this.world.board.layout, this.world.song);
+    this.hud = new Hud(this, this.world.features.lift, () => this.lift(), this.world.song.beats);
+    this.panel = new Panel(this, this.world.rules.towers, this.world.song);
     this.fx = new Effects(this);
 
     this.cursor = this.add.graphics().setDepth(7);
     this.comboLines = this.add.graphics().setDepth(9);
-    this.perkMenu = new PerkMenu(this, this.core.bounds);
+    this.perkMenu = new PerkMenu(this, this.core.bounds, this.world.song);
     this.ghostShape = this.add.graphics();
     this.ghost = this.add.container(0, 0, [this.ghostShape]).setDepth(20).setVisible(false);
     this.hoverLabel = this.add
@@ -141,10 +146,10 @@ export class GameScene extends Phaser.Scene {
 
     const removeListener = this.engine.addListener({
       onHit: (e) => {
-        if (e.instrument in DRUM_DEFS) this.core.pulse(e.instrument as DrumType, e.velocity);
-        this.panel.flashStep(e.instrument, e.step % 16);
+        if (this.coreIds.has(e.layer)) this.core.pulse(e.layer, e.velocity);
+        this.panel.flashStep(e.layer, e.step % this.world.stepsPerBar);
         for (const v of this.towers.values()) {
-          if (v.tower.type === e.instrument && v.playing) v.pulse(e.velocity);
+          if (v.tower.type === e.layer && v.playing) v.pulse(e.velocity);
         }
       },
       onAttack: (a) => {
@@ -201,7 +206,7 @@ export class GameScene extends Phaser.Scene {
     });
     if (this.perkMenu.open) {
       this.perkMenu.refresh(
-        PERK_DRUMS.map((perk) => ({
+        perkLayers(this.world.song).map(({ id: perk }) => ({
           perk,
           price: this.world.perkCost(perk, this.t),
           status: this.world.perksPending.has(perk) ? 'pending' : this.world.hasPerk(perk) ? 'playing' : 'buy',
@@ -236,7 +241,7 @@ export class GameScene extends Phaser.Scene {
 
   private onAudibleStep(a: AudibleState): void {
     const { pos } = a;
-    this.hud.setStep(pos.bar, pos.beat, pos.sixteenth, a.chord);
+    this.hud.setStep(pos.bar, pos.stepInBar, a.chord);
     this.hud.setWaves({
       status: a.waves,
       step: a.step,
@@ -245,30 +250,35 @@ export class GameScene extends Phaser.Scene {
       toWin: this.t.waves.toWin,
     });
     const perDrum = Math.max(1, Math.round(this.t.core.hpPerDrum));
-    const owned = (d: DrumType) => !isPerk(d) || a.perksOwned.has(d);
-    const ownedDrums = [...BASE_DRUMS, ...PERK_DRUMS].filter(owned);
+    const song = this.world.song;
+    const owned = (d: CoreLayerId) => !song.core.find((l) => l.id === d)?.perk || a.perksOwned.has(d);
+    const ownedLayers = song.core.map((l) => l.id).filter(owned);
     this.hud.setCore(
-      ownedDrums.reduce((n, d) => n + Math.max(0, a.drums[d]), 0),
-      ownedDrums.length * perDrum,
+      ownedLayers.reduce((n, d) => n + Math.max(0, a.coreHp[d] ?? 0), 0),
+      ownedLayers.length * perDrum,
     );
-    this.core.setHealth(a.drums, perDrum, owned);
+    this.core.setHealth(a.coreHp, perDrum, owned);
     this.drawCombos(a.combos);
     this.core.setResting(a.core === 'resting');
     this.panel.setStep(pos.stepInBar);
 
-    for (const d of [...BASE_DRUMS, ...PERK_DRUMS]) {
-      this.panel.setRowState(d, a.drums[d] <= 0 ? 'off' : a.core === 'resting' ? 'idle' : 'on');
+    // What each layer plays this bar (it changes with fills, upgrades and the melody).
+    const newBar = pos.stepInBar === 0 || this.previewBar !== pos.bar;
+    if (newBar) this.previewBar = pos.bar;
+    for (const l of song.core) {
+      if (newBar) this.panel.setRowSteps(l.id, this.world.previewSteps(l.id));
+      this.panel.setRowState(l.id, (a.coreHp[l.id] ?? 0) <= 0 ? 'off' : a.core === 'resting' ? 'idle' : 'on');
     }
     for (const type of TOWER_TYPES) {
       const mode = a.layers[type].mode;
-      const p = TOWER_DEFS[type].patterns;
-      this.panel.setRowPattern(type, a.layerUpgraded[type] ? p.upgraded : this.world.mods.variants.has(type) ? p.variant : p.base);
+      if (newBar) this.panel.setRowSteps(type, this.world.previewSteps(type));
       this.panel.setRowState(type, mode === 'fighting' ? 'on' : mode === 'idle' ? 'idle' : 'off');
     }
     for (const v of this.towers.values()) v.setPlaying(a.playingTowers.has(v.tower.id));
 
-    if (pos.sixteenth === 0) {
-      const downbeat = pos.beat === 0;
+    const beat = beatStart(this.world.song.beats, pos.stepInBar);
+    if (beat >= 0) {
+      const downbeat = beat === 0;
       this.tweens.add({ targets: this.pathGlow, alpha: { from: downbeat ? 0.7 : 0.45, to: 0.22 }, duration: 380, ease: 'Quad.easeOut' });
       for (const v of this.towers.values()) v.blink();
     }
@@ -470,7 +480,7 @@ export class GameScene extends Phaser.Scene {
         d.moved = true;
         const type = d.kind === 'new' ? d.type : d.view.tower.type;
         this.ghostShape.clear();
-        drawShape(this.ghostShape, TOWER_DEFS[type].shape, TOWER_SIZE, TOWER_DEFS[type].color, 0.85);
+        drawShape(this.ghostShape, TOWER_DEFS[type].shape, GRID.tower, TOWER_DEFS[type].color, 0.85);
         this.ghost.setVisible(true);
         if (d.kind === 'move') d.view.container.setAlpha(0.25);
       }
@@ -558,7 +568,7 @@ export class GameScene extends Phaser.Scene {
     this.strokeRange(g, center, type);
     if (!d?.moved) {
       g.fillStyle(TOWER_DEFS[type].color, 0.22);
-      g.fillCircle(center.x, center.y, TOWER_SIZE / 2);
+      g.fillCircle(center.x, center.y, GRID.tower / 2);
     }
   }
 

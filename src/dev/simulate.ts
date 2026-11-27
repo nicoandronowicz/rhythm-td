@@ -11,12 +11,13 @@
 import { tuningForLevel } from '../config/levelTuning';
 import { DEFAULT_TUNING, type Tuning } from '../config/tuning';
 import { Board } from '../game/board';
-import { PERK_DRUMS } from '../game/core';
+import { perkLayers } from '../game/core';
 import { pathCells, type Cell } from '../game/grid';
 import { levelById, type LevelId } from '../game/levels';
 import type { TowerType } from '../game/towers';
 import { waveSize } from '../game/waves';
 import { rulesFor, towerStats, World } from '../game/world';
+import { songById } from '../music/songs';
 
 export interface WaveLog {
   wave: number;
@@ -69,7 +70,9 @@ export function simulateLevel(
 ): SimResult {
   const level = levelById(id);
   const t = tuningForLevel(opts.tuning ?? DEFAULT_TUNING, level);
-  const world = new World(new Board(level.map), t, mulberry(opts.seed ?? 1), rulesFor(level));
+  const song = songById(level.song);
+  const world = new World(new Board(level.map, song.stepsPerBar), t, mulberry(opts.seed ?? 1), rulesFor(level, song));
+  const spb = song.stepsPerBar;
   const skill = opts.skill ?? 1;
   const maxWaves = opts.maxWaves ?? (t.waves.toWin || 15);
   const types: TowerType[] = [...level.towers];
@@ -78,9 +81,9 @@ export function simulateLevel(
   let lastWave = 0;
   let leaksThisWave = 0;
 
-  for (let step = 0; step < 16 * 400; step++) {
+  for (let step = 0; step < spb * 400; step++) {
     const st = world.waves.status(step);
-    if (step % 16 === 0) {
+    if (step % spb === 0) {
       const building = opts.stopBuildingAfterWave === undefined || st.wave <= opts.stopBuildingAfterWave;
       if (world.rewardOffer?.length) world.chooseReward(world.rewardOffer[0]!);
       if (world.hype >= 1) world.requestLift();
@@ -97,7 +100,7 @@ export function simulateLevel(
           if (world.money - world.upgradeCost(tw, t) < reserve) break;
           world.upgrade(tw.id, t);
         }
-        for (const p of PERK_DRUMS) if (world.money - world.perkCost(p, t) >= reserve) world.buyPerk(p, t);
+        for (const { id: p } of perkLayers(song)) if (world.money - world.perkCost(p, t) >= reserve) world.buyPerk(p, t);
       }
     }
 
