@@ -1,5 +1,19 @@
 # Progress
 
+## 2026-11-27 · Paused
+
+Nico played the v2 build: "it's boring". He is dropping the project. What was in his head was more interesting than what it became.
+
+**State at pause**
+
+- Live and working: four chapters, 11 levels plus Club Night, music engine v2, 164 tests passing.
+- Nothing half-built. The code is committed; `main` matches the live site.
+
+**What the prototype answered**
+
+- Better sound alone did not make it fun. In the game the player places towers and the music plays itself. Nothing the player does moment to moment is musical. The music is a backdrop, not the game.
+- If this is ever picked up again, start from a new core loop where the player's choices make the music (timing, arrangement, mixing as the attack). Don't start by polishing the current one.
+
 ## 2026-11-27 · Music engine v2 and chapters
 
 From Nico's listen: "sounds like a garbage looped track from a kids game; the bar loops too quickly; the sounds are too basic; not all songs need a 4/4 kick; bigger levels in chapters". Built in one go (his choice), decisions in `design.md` (27 Nov 2026).
