@@ -1,5 +1,43 @@
 # Progress
 
+## 2026-11-27 · Music engine v2 and chapters
+
+From Nico's listen: "sounds like a garbage looped track from a kids game; the bar loops too quickly; the sounds are too basic; not all songs need a 4/4 kick; bigger levels in chapters". Built in one go (his choice), decisions in `design.md` (27 Nov 2026).
+
+**Shipped**
+
+- A new music engine. Songs are data (`src/music/songs/`); a composer writes every 16th from the song and the game state. Extended chords (9ths, sus, slash chords) with voice leading, composed 8-bar melodies plus answer phrases written as scale degrees, polymetric arps (5 against 8, 3 against 7), 2-bar patterns, fills every 8 bars, a key lift in a later section, filters opening across each wave.
+- Four chapters, one song each:
+  - Afterhours: progressive house, F minor, 122. The five training levels and Club Night.
+  - Night Bus: UK garage / 2-step, C minor, 132, heavy shuffle. No four-on-the-floor; the foundation is the 2-step kick.
+  - Seven Rivers: organic 7/8 (2+2+3), D dorian, 112. No kick at all; the foundation is a frame drum.
+  - Low Tide: liquid drum & bass, E minor, 172.
+- Real instruments: CC0 samples from Versilian Studios (VCSL, VSCO 2 CE): Steinway piano, FM electric piano, kalimba, marimba, vibraphone, string sections, flute, congas, bongos, cajon, darbuka, frame drum, snare, hi-hats, claps, shaker, tambourine. About 6 MB, loaded per song. Plus new synth voices: unison synths, FM bells and pianos, vowel-filtered vocal chops, synthesized drums.
+- New mixer: per-song channels and levels, generated room and hall reverbs, tempo delay, sidechain pump per song.
+- Breakdowns: when the core rests, the foundation drops out (instead of the whole core being muffled at 900 Hz), and builds come back with a riser, a snare roll speeding up and a reversed cymbal.
+- Six new levels (two per new chapter) on bigger maps, 26×16 to 30×19, cells shrink to fit. Level select grouped by chapter. The core, perks, track view (any meter) and beat dots follow the song.
+- Balance: tower damage is per bar (`refHits`), so busier parts never change difficulty. New tests: every song's melodies fit their chords on downbeats, every chapter level is winnable by an active player.
+
+**Verified**
+
+- 164 tests pass; build passes.
+- Live playback load (Chrome playback stats, real towers fighting): 57 audio underruns in 45 s on the first try, 0 after the optimisation pass (lighter core channels, native crush, cached hat sounds, shared unison panners, cheaper idle towers), across Afterhours, Night Bus and Low Tide.
+- Repetition, counted note for note: 14 to 16 of the 16 bars in a wave are different in every song (the old engine had at most 8: each wave was an 8-bar loop played twice).
+- Offline renders of each song (`renders/preview-*.mp3`, not committed): spectrum now reaches the top octave (hats and percussion), the sub no longer swamps everything; peaks below 0 dBFS.
+
+**Known issues**
+
+- Nobody has heard it yet: mix levels, patch sounds and melodies are first drafts made by measurement, not by ear.
+- Low end is still on the heavy side in Afterhours and Low Tide during waves (tuning panel: Core and Bass trims).
+- Chapter level difficulty swings a lot with which rewards come up; first-pass numbers.
+- On small cells (the 30×19 maps) the core box is cramped.
+- Club Night (Endless) only plays Afterhours.
+
+**Next step**
+
+- Nico listens to the four previews and plays one level per chapter, then says in producer terms what still sounds cheap: which instrument, which section.
+- Then: tune patches and mix by ear with him, and decide whether Endless should move through all four songs like a DJ set.
+
 ## 2026-11-25 · Goal: a complete, evaluable prototype (training levels, menu, rewards, music engine, Lift)
 
 Built in one go at Nico's request, with design calls recorded in `design.md` (25 Nov 2026) for review.
